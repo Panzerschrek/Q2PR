@@ -122,6 +122,31 @@ extern void (*DrawFill)(  int x0, int y0, int x1, int y1, fixed16_t depth );
 //divide all colors on screen
 extern void (*FadeScreen)(void);
 
+
+/*hack, for generation 1 mov instruction instead 3(4):
+mov eax, dword ptr[src]
+mov dword ptr [dst], eax
+;instead
+mov al, byte ptr[src]
+mov byte ptr [dst], al
+mov al, byte ptr[src+1]
+mov byte ptr [dst+1], al
+mov al, byte ptr[src+2]
+mov byte ptr [dst+2], al
+mov al, byte ptr[src+3]
+mov byte ptr [dst+3], al
+*/
+#ifdef __cplusplus
+inline void Byte4Copy( void* dst, const void* src )
+{
+    *((int*)dst)= *((int*)src);
+}
+#else
+#define Byte4Copy( dst, src ) *((int*)(dst))=  *((int*)(src))
+#endif
+
+
+
 #ifdef __cplusplus
 //extern "C"
 }

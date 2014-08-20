@@ -37,10 +37,16 @@ float height2_f;
 float width_f;
 float height_f;
 m_Mat4 view_matrix;
-m_Vec3 cam_pos;
+float cam_pos[3];
 float fov_y_rad;
 float texels_in_pixel= 64.0f * 2.0f / 768.0f;// number of texels in screen, on surface on distance 1m.
+int current_frame;
 
+
+void SetWorldFrame( int frame )
+{
+	current_frame= frame;
+}
 
 
 triangle_draw_func_t world_triangles_draw_funcs_table[]=
@@ -113,6 +119,29 @@ triangle_draw_func_t GetWorldDrawFunc( int texture_mode, bool is_blending )
 		return world_triangles_draw_funcs_table[y+x*3];
 }
 
+triangle_draw_func_t GetWorldNearDrawFunc( bool is_alpha )
+{
+	int tex_mode;
+	if( strcmp( r_texture_mode->string, "texture_linear" ) == 0 )
+		tex_mode= TEXTURE_LINEAR;
+	else if( strcmp( r_texture_mode->string, "texture_fake_filter" ) == 0 )
+		tex_mode= TEXTURE_FAKE_FILTER;
+	else
+		tex_mode= TEXTURE_NEAREST;
+	return GetWorldDrawFunc( tex_mode, is_alpha );
+}
+
+triangle_draw_func_t GetWorldFarDrawFunc( bool is_alpha )
+{
+	int tex_mode;
+	if( strcmp( r_texture_mode->string, "texture_linear" ) == 0 )
+		tex_mode= TEXTURE_LINEAR;
+	else if( strcmp( r_texture_mode->string, "texture_fake_filter" ) == 0 )
+		tex_mode= TEXTURE_FAKE_FILTER;
+	else
+		tex_mode= TEXTURE_NEAREST;
+	return GetWorldDrawFunc( tex_mode, is_alpha );
+}
 
 void InitTextureSurfacesChain()
 {
@@ -135,11 +164,11 @@ void SetFov( float fov )
 const int max_poly_vertices= 24;
 mvertex_t* surface_vertices[max_poly_vertices];
 m_Vec3 surface_final_vertices[max_poly_vertices];
-int GetSurfaceMipLevel( int vertex_count, vec3_t normal )
+int GetSurfaceMipLevel( msurface_t* surf )
 {
 	float dst= 0;
 	int front_vertex_count= 0;
-	for( int i= 0; i< vertex_count; i++ )
+	for( int i= 0; i< surf->numedges; i++ )
 	{
 		if( surface_final_vertices[i].z > PSR_MIN_ZMIN_FLOAT )
 		{
@@ -180,12 +209,16 @@ int DrawWorldSurface( msurface_t* surf, triangle_draw_func_t near_draw_func, tri
 		surface_final_vertices[e]= surface_final_vertices[e] * view_matrix;
 	}
 
-	int mip_level= GetSurfaceMipLevel( surf->numedges, surf->plane->normal );
+	int mip_level= GetSurfaceMipLevel( surf );
 	Texture* tex= R_FindTexture( texinfo->image );
 	if( mip_level > 3 ) mip_level= 3;
 	command_buffer.current_pos += 
 	ComIn_SetTextureLod( command_buffer.current_pos + (char*)command_buffer.buffer, tex, mip_level );
 
+	unsigned char ccolor[4];
+	*((int*)ccolor)= d_8to24table[ (surf - r_worldmodel->surfaces)&255 ];
+	command_buffer.current_pos += 
+	ComIn_SetConstantColor( command_buffer.current_pos + (char*)command_buffer.buffer, ccolor );
 
 	char* buff= (char*) command_buffer.buffer;
 	buff+= command_buffer.current_pos;
@@ -255,32 +288,12 @@ int DrawWorldSurface( msurface_t* surf, triangle_draw_func_t near_draw_func, tri
 	return triangle_count;
 }
 
-static unsigned char water_lightmap[2*2*4];
-void InitWaterLightmap()
-{
-	if( strcmp(r_lightmap_mode->string, "lightmap_linear_rgbs" ) == 0 )
-		for( int i= 0; i< sizeof(water_lightmap); i+=4 )
-		{
-			water_lightmap[i+0]= 255;
-			water_lightmap[i+1]= 255;
-			water_lightmap[i+2]= 255;
-			water_lightmap[i+3]= 192;
-		}
-	else
-		memset(water_lightmap, 192, sizeof(water_lightmap));
 
-}
-
-void DrawAlphaSurfaces(vec3_t cam_pos )
+void DrawWorldAlphaSurfaces()
 {
-	triangle_draw_func_t  draw_func = GetWorldDrawFunc(TEXTURE_FAKE_FILTER, true);
+	triangle_draw_func_t  draw_func = GetWorldNearDrawFunc( true );
 	msurface_t* surf= alpha_surfaces_chain.first_surface;
 	int surf_cout= alpha_surfaces_chain.surf_count;
-
-	::cam_pos.x= cam_pos[0];
-	::cam_pos.y= cam_pos[1];
-	::cam_pos.z= cam_pos[2];
-
 	command_buffer.current_pos += 
 			ComIn_SetConstantBlendFactor( command_buffer.current_pos + (char*)command_buffer.buffer, 64*3 );
 	while( surf_cout != 0 )
@@ -292,10 +305,19 @@ void DrawAlphaSurfaces(vec3_t cam_pos )
 		if( dot <= 0.0f )
 			goto next_surface;
 
+		mtexinfo_t* texinfo= surf->texinfo;
+		int tex_frame= current_frame % texinfo->numframes;
+		int fr= tex_frame;
+		while(fr)
+		{
+			texinfo= texinfo->next;
+			fr--;
+		}
+
 		command_buffer.current_pos += 
 		ComIn_SetLightmap( command_buffer.current_pos + (char*)command_buffer.buffer,
 			L_GetSurfaceDynamicLightmap(surf), (surf->extents[0]>>4) + 1 );
-		int cur_triangles= DrawWorldSurface(surf, draw_func, draw_func, surf->texinfo, 0 );
+		int cur_triangles= DrawWorldSurface(surf, draw_func, draw_func, texinfo, 0 );
 
 		command_buffer.current_pos+= sizeof(int) + sizeof(DrawTriangleCall) + cur_triangles * 4 * sizeof(int)*7;
 
@@ -306,27 +328,20 @@ next_surface:
 
 }
 
-void DrawTextureChains(vec3_t cam_pos)
+void DrawWorldTextureChains()
 {
 	int tex_coord_shift;
 	int tex_mode;
 	if( strcmp( r_texture_mode->string, "texture_linear" ) == 0 )
-	{
 		tex_coord_shift= -32768;
-		tex_mode= TEXTURE_LINEAR;
-	}
 	else if( strcmp( r_texture_mode->string, "texture_fake_filter" ) == 0 )
-	{
 		tex_coord_shift= -32768;
-		tex_mode= TEXTURE_FAKE_FILTER;
-	}
-	else
-	{
-		tex_coord_shift= 0;
-		tex_mode= TEXTURE_NEAREST;
-	}
 
-	triangle_draw_func_t  draw_func = GetWorldDrawFunc(tex_mode, false);
+	else
+		tex_coord_shift= 0;
+
+
+	triangle_draw_func_t  draw_func = GetWorldNearDrawFunc(false);
 
 	int triangle_count= 0, face_count= 0;
 	for( int i= 0; i< MAX_RIMAGES; i++ )
@@ -351,7 +366,16 @@ void DrawTextureChains(vec3_t cam_pos)
 			ComIn_SetLightmap( command_buffer.current_pos + (char*)command_buffer.buffer,
 				L_GetSurfaceDynamicLightmap(surf), (surf->extents[0]>>4) + 1 );
 
-			int cur_triangles= DrawWorldSurface(surf, draw_func, draw_func, surf->texinfo, tex_coord_shift );
+			mtexinfo_t* texinfo= surf->texinfo;
+			int tex_frame= current_frame % texinfo->numframes;
+			int fr= tex_frame;
+			while(fr)
+			{
+				texinfo= texinfo->next;
+				fr--;
+			}
+
+			int cur_triangles= DrawWorldSurface(surf, draw_func, draw_func, texinfo, tex_coord_shift );
 			triangle_count+= cur_triangles;
 			command_buffer.current_pos+= sizeof(int) + sizeof(DrawTriangleCall) + cur_triangles * 4 * sizeof(int)*7;
 
@@ -449,12 +473,9 @@ void DrawTree_r( mnode_t* node, vec3_t cam_pos )
 }
 
 
-void DrawWorldNodes(m_Mat4* mat, vec3_t cam_pos )
+void BuildSurfaceLists(m_Mat4* mat, vec3_t new_cam_pos )
 {
-	float width2= float(vid.width)*0.5f;
-	float height2= float(vid.height)*0.5f;
-	float width= float(vid.width);
-	float height= float(vid.height);
+	VectorCopy( new_cam_pos, cam_pos );
 
 	int triangle_count= 0, face_count= 0;
 
@@ -462,7 +483,6 @@ void DrawWorldNodes(m_Mat4* mat, vec3_t cam_pos )
 	r_viewcluster = r_viewleaf->cluster;
 	R_MarkLeaves();
 	InitTextureSurfacesChain();
-
 
 	for( int i= 0; i< r_worldmodel->numleafs; i++ )
 	{
@@ -481,12 +501,10 @@ void DrawWorldNodes(m_Mat4* mat, vec3_t cam_pos )
 	DrawTree_r( r_worldmodel->nodes, cam_pos );
 	R_PushDlights( r_worldmodel );
 
-	width_f= float(vid.width);
+	width_f= float(vid.width) *65536.0f;
 	width2_f= width_f * 0.5f;
-	height_f= float(vid.height);
+	height_f= float(vid.height) *65536.0f;
 	height2_f= height_f * 0.5f;
 
 	view_matrix= *mat;
-	DrawTextureChains(cam_pos);
-	DrawAlphaSurfaces(cam_pos);
 }

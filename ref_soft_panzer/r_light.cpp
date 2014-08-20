@@ -54,7 +54,7 @@ void ColorCorrectLights( int num_lights )
 			l->color[1]= l->color[1] * sat + s;
 			l->color[2]= l->color[2] * sat + s;
 
-			float tmp= l->color[0]; l->color[0]= l->color[2]; l->color[2]= tmp;//swap red and blue
+			ColorFloatSwap( l->color );
 		}
 		else
 			l->intensity*= ( l->color[0] + l->color[1] + l->color[2] ) * 0.3333333333f;

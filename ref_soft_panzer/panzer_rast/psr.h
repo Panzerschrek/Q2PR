@@ -31,8 +31,8 @@ typedef int fixed16_t;
 //#define PSR_MASM64 1
 //#define PSR_USE_MMX
 
-#define PSR_MAX_SCREEN_WIDTH 8192
-#define PSR_MAX_SCREEN_HEIGHT 8192
+#define PSR_MAX_SCREEN_WIDTH 4096
+#define PSR_MAX_SCREEN_HEIGHT 4096
 
 #define PSR_LINE_SEGMENT_SIZE 8
 #define PSR_LINE_SEGMENT_SIZE_LOG2 3
@@ -52,8 +52,8 @@ typedef int fixed16_t;
 #define PSR_MAX_DEPTH_BUFFER_VALUE 65536//max depth buffer value + 1
 
 //coefficient for convertion of linear z from fixed16_t format to depth buffer format
-#define PSR_DEPTH_SCALER  1024//( PSR_MAX_DEPTH_BUFFER_VALUE * PSR_MAX_ZMAX / 65536 )
-#define PSR_DEPTH_SCALER_LOG2 10
+#define PSR_DEPTH_SCALER  512//( PSR_MAX_DEPTH_BUFFER_VALUE * PSR_MAX_ZMAX / 65536 )
+#define PSR_DEPTH_SCALER_LOG2 9
 
 //scale delta of line variables in fragment processing, becouse without it, deltas can be very small
 #define PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 6

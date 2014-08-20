@@ -8,24 +8,6 @@
 #include "psr_mmx.h"
 #include "rasterization.h"
 
-/*hack, for generation 1 mov instruction instead 3(4):
-mov eax, dword ptr[src]
-mov dword ptr [dst], eax
-;instead
-mov al, byte ptr[src]
-mov byte ptr [dst], al
-mov al, byte ptr[src+1]
-mov byte ptr [dst+1], al
-mov al, byte ptr[src+2]
-mov byte ptr [dst+2], al
-mov al, byte ptr[src+3]
-mov byte ptr [dst+3], al
-*/
-inline void Byte4Copy( void* dst, const void* src )
-{
-    *((int*)dst)= *((int*)src);
-}
-
 void* framebuffer_data= NULL;//raw pointer to allocated framebuffer data. 
 unsigned char* screen_buffer= NULL;//main screen color buffer format - RGBA
 unsigned char* back_screen_buffer= NULL;
@@ -128,6 +110,7 @@ int current_lightmap_size_x_log2, current_lightmap_size_y_log2;
 int current_lightmap_size_x1, current_lightmap_size_y1; //x-1 and y-1
 
 //rendering state
+int current_time;//for animated textures, etc.
 unsigned char constant_alpha;
 unsigned char constant_blend_factor;
 unsigned char inv_constant_blend_factor;
@@ -904,15 +887,16 @@ void DrawSpriteFromBuffer( char* buff )
 }
 
 //in per vertex:
-static int triangle_in_vertex_xy[ 2 * 3 ];//screen space x and y
-static fixed16_t triangle_in_vertex_z[3];//screen space z
-static PSR_ALIGN_4 unsigned char triangle_in_color[ 3 * 4 ];
+static fixed16_t triangle_in_vertex_xy[ 2 * 3 +3 ];//screen space x and y
+static fixed16_t triangle_in_vertex_z[3 +1];//screen space z
+static PSR_ALIGN_4 unsigned char triangle_in_color[ 3 * 4 +4 ];
 static int triangle_in_light[3];
-static fixed16_t triangle_in_tex_coord[ 2 * 3 ];
-static fixed16_t triangle_in_lightmap_tex_coord[ 2 * 3 ];
+static fixed16_t triangle_in_tex_coord[ 2 * 3 +2 ];
+static fixed16_t triangle_in_lightmap_tex_coord[ 2 * 3 +2 ];
 
 
 static fixed16_t scanline_z[ 1 + PSR_MAX_SCREEN_WIDTH / PSR_LINE_SEGMENT_SIZE ];
+int triangle_in_divisor_vertex_index= 0;//1 or 2
 /*
 in vertices:
 .....0
@@ -933,13 +917,13 @@ enum BlendingMode blending_mode,
 enum AlphaTestMode alpha_test_mode,
 enum LightingMode lighting_mode,
 enum LightmapMode lightmap_mode,
-enum AdditionalLightingMode additional_lighting_mode,
+enum AdditionalEffectMode additional_lighting_mode,
 enum DepthTestMode depth_test_mode,
 bool write_depth >
 void DrawTriangleUp()
 {
-    int y_begin= FastIntClampToZero( triangle_in_vertex_xy[3] );//FastIntMax( 0, triangle_in_vertex_xy[3] );
-    int y_end= FastIntMin( screen_size_y, triangle_in_vertex_xy[1] );
+    int y_begin= FastIntClampToZero( triangle_in_vertex_xy[3]>>16 );
+    int y_end= FastIntMin( screen_size_y, triangle_in_vertex_xy[1]>>16 );
 
     fixed16_t x_left, x_right, dx_left, dx_right;
     fixed16_t color_left[4], d_color_left[4];
@@ -955,13 +939,14 @@ void DrawTriangleUp()
     fixed16_t line_inv_z, d_line_inv_z;
 
     {
-        int dy= triangle_in_vertex_xy[1] - triangle_in_vertex_xy[3];// triangle height
-        int dx= triangle_in_vertex_xy[4] - triangle_in_vertex_xy[2];// triangle width
-        fixed16_t ddy= ( y_begin - triangle_in_vertex_xy[3] )<<16;// distance between triangle begin and lower screen border
-        dx_left= ( ( triangle_in_vertex_xy[0] - triangle_in_vertex_xy[2] ) <<16 ) / dy;
-        x_left= ( triangle_in_vertex_xy[2]<<16 ) + Fixed16Mul( ddy, dx_left );
-        dx_right= ( ( triangle_in_vertex_xy[0] - triangle_in_vertex_xy[4] ) <<16 ) / dy;
-        x_right= ( triangle_in_vertex_xy[4]<<16 ) + Fixed16Mul( ddy, dx_right );
+		fixed16_t dy= triangle_in_vertex_xy[1] - triangle_in_vertex_xy[3];// triangle height
+        fixed16_t dx= triangle_in_vertex_xy[4] - triangle_in_vertex_xy[2];// triangle width
+		fixed16_t ddy= (y_begin<<16) - triangle_in_vertex_xy[3];// distance between triangle begin and lower screen border
+		dx_left= Fixed16Div( triangle_in_vertex_xy[0] - triangle_in_vertex_xy[2], dy );
+		x_left= triangle_in_vertex_xy[2] + Fixed16Mul( ddy, dx_left );
+		dx_right= Fixed16Div( triangle_in_vertex_xy[0] - triangle_in_vertex_xy[4], dy );
+        x_right= triangle_in_vertex_xy[4] + Fixed16Mul( ddy, dx_right );
+
         fixed16_t inv_vertex_z[3];
         for( int i= 0; i< 3; i++ )
 		{
@@ -974,9 +959,9 @@ void DrawTriangleUp()
         {
             for( int i= 0; i< 4; i++ )
             {
-                color_left[i]= (triangle_in_color[i+4]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[1];
-                d_color_left[i]= ( (triangle_in_color[i]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[0] - color_left[i] ) / dy;
-                d_line_color[i]= ( (triangle_in_color[i+8]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[2] - color_left[i] ) / dx;
+				color_left[i]= (triangle_in_color[i+4]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[1];
+                d_color_left[i]= Fixed16Div( (triangle_in_color[i]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[0] - color_left[i], dy );
+                d_line_color[i]= Fixed16Div( (triangle_in_color[i+8]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[2] - color_left[i], dx );
                 color_left[i]+= Fixed16Mul( ddy, color_left[i] );
             }
         }
@@ -984,38 +969,37 @@ void DrawTriangleUp()
         {
             for( int i= 0; i< 2; i++ )
             {
-                tc_left[i]= Fixed16Mul( triangle_in_tex_coord[i+2], inv_vertex_z[1] );
-                d_tc_left[i]= Fixed16Mul( triangle_in_tex_coord[i], inv_vertex_z[0] ) - tc_left[i];
-                d_tc_left[i]/= dy;
-                d_line_tc[i]= ( Fixed16Mul( triangle_in_tex_coord[i+4], inv_vertex_z[2] ) - tc_left[i] )/ dx;
+				tc_left[i]= Fixed16Mul( triangle_in_tex_coord[i+2], inv_vertex_z[1] );
+                d_tc_left[i]= Fixed16Div( Fixed16Mul( triangle_in_tex_coord[i], inv_vertex_z[0] ) - tc_left[i], dy );
+                d_line_tc[i]= Fixed16Div( Fixed16Mul( triangle_in_tex_coord[i+4], inv_vertex_z[2] ) - tc_left[i], dx );
                 tc_left[i]+= Fixed16Mul( ddy, d_tc_left[i] );
             }
         }
         if( lighting_mode == LIGHTING_PER_VERTEX )
         {
-            light_left= inv_vertex_z[1] * triangle_in_light[1];
-            d_light_left= ( triangle_in_light[0] * inv_vertex_z[0] - light_left ) / dy;
-            d_line_light= ( triangle_in_light[2] * inv_vertex_z[2] - light_left ) / dx;
+			light_left= inv_vertex_z[1] * triangle_in_light[1];
+            d_light_left= Fixed16Div( triangle_in_light[0] * inv_vertex_z[0] - light_left, dy );
+            d_line_light= Fixed16Div( triangle_in_light[2] * inv_vertex_z[2] - light_left, dx );
             light_left+= Fixed16Mul( ddy, d_light_left );
+
         }
         else if( lighting_mode == LIGHTING_FROM_LIGHTMAP || lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
         {
             for( int i= 0; i< 2; i++ )
             {
-                tc_left[i+2]= Fixed16Mul( triangle_in_lightmap_tex_coord[i+2], inv_vertex_z[1] );
-                d_tc_left[i+2]= Fixed16Mul( triangle_in_lightmap_tex_coord[i], inv_vertex_z[0] ) - tc_left[i+2];
-                d_tc_left[i+2]/= dy;
-                d_line_tc[i+2]= ( Fixed16Mul( triangle_in_lightmap_tex_coord[i+4], inv_vertex_z[2] ) -  tc_left[i+2] )/ dx;
-                tc_left[i+2]+= Fixed16Mul( ddy, d_tc_left[i] );
+				tc_left[i+2]= Fixed16Mul( triangle_in_lightmap_tex_coord[i+2], inv_vertex_z[1] );
+                d_tc_left[i+2]= Fixed16Div( Fixed16Mul( triangle_in_lightmap_tex_coord[i], inv_vertex_z[0] ) - tc_left[i+2], dy );
+                d_line_tc[i+2]= Fixed16Div( Fixed16Mul( triangle_in_lightmap_tex_coord[i+4], inv_vertex_z[2] ) - tc_left[i+2], dx );
+                tc_left[i+2]+= Fixed16Mul( ddy, d_tc_left[i+2] );
             }
         }//if use lightmaps
 
 //shift invert z, becouse delta can be very short
-        d_inv_z_left= ( ( inv_vertex_z[0] - inv_vertex_z[1] )<< PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 ) / dy;
+        d_inv_z_left= Fixed16Div( ( inv_vertex_z[0] - inv_vertex_z[1] )<< PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2, dy );
         inv_z_left= ( inv_vertex_z[1] << PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 ) + Fixed16Mul( d_inv_z_left, ddy );
-        d_line_inv_z= ( ( inv_vertex_z[2] - inv_vertex_z[1] )<< PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 ) / dx;
+        d_line_inv_z= Fixed16Div( ( inv_vertex_z[2] - inv_vertex_z[1] )<< PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2, dx );
 
-        if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP 
+        /*if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP 
 			|| texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP || texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER_MIPMAP )
         {
             fixed16_t du_dx, du_dy, dv_dx, dv_dy;
@@ -1048,10 +1032,9 @@ void DrawTriangleUp()
                 int v_dv_dx= Fixed16MulResultToInt( dv_dx - ( Fixed16Mul( triangle_in_tex_coord[i*2+1], d_line_inv_z )>>PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 ), triangle_in_vertex_z[i] );
                 int v_du_dy= Fixed16MulResultToInt( du_dy - ( Fixed16Mul( triangle_in_tex_coord[i*2], d_colomn_inv_z )>>PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 ), triangle_in_vertex_z[i] );
                 int v_dv_dy= Fixed16MulResultToInt( dv_dy - ( Fixed16Mul( triangle_in_tex_coord[i*2+1], d_colomn_inv_z )>>PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 ), triangle_in_vertex_z[i] );
-                /*lod[i]= log2( sqrt( max( du_dx^2 + dv_dx^2, du_dy^2 + dv_dy^2 ) ) )=
-                log2( max( du_dx^2 + dv_dx^2, du_dy^2 + dv_dy^2 ) )/2
-                this expressions returns lod*2 ( lod in format fixed1_t )
-                */
+                //lod[i]= log2( sqrt( max( du_dx^2 + dv_dx^2, du_dy^2 + dv_dy^2 ) ) )=
+                //log2( max( du_dx^2 + dv_dx^2, du_dy^2 + dv_dy^2 ) )/2
+                //this expressions returns lod*2 ( lod in format fixed1_t )
                 lod[i]= FastIntLog2Clamp0( FastIntMax(
                                                v_du_dx * v_du_dx + v_dv_dx * v_dv_dx,
                                                v_du_dy * v_du_dy + v_dv_dy * v_dv_dy
@@ -1067,13 +1050,21 @@ void DrawTriangleUp()
             d_lod_left>>= 1;
             d_line_lod>>= 1;
 
-        }
+        }*/
     }//calculate delta and begin values
 
     for( int y= y_begin; y< y_end; y++, x_left+= dx_left, x_right+= dx_right )//scan lines
     {
-        int x_begin= FastIntClampToZero( x_left>>16 );//FastIntMax( 0, x_left>>16 );
+        int x_begin= FastIntClampToZero( x_left>>16 );
         int x_end= FastIntMin( screen_size_x, x_right>>16 );
+		if( y == y_begin )
+		{
+			if( triangle_in_divisor_vertex_index != 1 )
+				x_begin= FastIntClampToZero( triangle_in_vertex_xy[2]>>16 );
+			else //if( triangle_in_divisor_vertex_index != 2 )
+				x_end= FastIntMin( screen_size_x, triangle_in_vertex_xy[4]>>16 );
+		}
+
         int s= x_begin + screen_size_x * y;
         depth_buffer_t* depth_p= depth_buffer + s;
         unsigned char* pixels= screen_buffer + (s<<2);
@@ -1147,12 +1138,7 @@ void DrawTriangleUp()
             }
 
             if( color_mode == COLOR_CONSTANT )
-            {
-                color[0]= constant_color[0];
-                color[1]= constant_color[1];
-                color[2]= constant_color[2];
-                color[3]= constant_color[3];
-            }
+				Byte4Copy( color, constant_color );
             else if( color_mode == COLOR_PER_VERTEX )
             {
                 for( int i= 0; i< 4; i++ )
@@ -1178,11 +1164,6 @@ void DrawTriangleUp()
                 {
                     TexelFetchNearestMipmap( Fixed16MulResultToInt( line_tc[0], final_z ),
                                              Fixed16MulResultToInt( line_tc[1], final_z ), Fixed16MulResultToInt( line_lod, final_z ), color );
-                    /*static const unsigned char lod_color_table[]= { 255,0,0, 128,128,0, 0,255,0, 0,128,128, 0,0,255, 128,128,255, 128,255,255, 255,255,255 };
-                    unsigned char c= Fixed16MulResultToInt( line_lod, final_z );
-                    color[0]= ( color[0] + lod_color_table[c*3] )>>1;
-                    color[1]= ( color[1] + lod_color_table[c*3+1] )>>1;
-                    color[2]= ( color[2] + lod_color_table[c*3+2] )>>1;*/
                 }
                 else if( texture_mode == TEXTURE_FAKE_FILTER_MIPMAP )
                 {
@@ -1365,7 +1346,9 @@ next_pixel:
                 line_tc[2]+= d_line_tc[2];
                 line_tc[3]+= d_line_tc[3];
             }
+#ifndef PSR_FAST_PERSECTIVE
             line_inv_z+= d_line_inv_z;
+#endif
         }//for x
 
 //next_line:
@@ -1427,13 +1410,13 @@ enum BlendingMode blending_mode,
 enum AlphaTestMode alpha_test_mode,
 enum LightingMode lighting_mode,
 enum LightmapMode lightmap_mode,
-enum AdditionalLightingMode additional_lighting_mode,
+enum AdditionalEffectMode additional_lighting_mode,
 enum DepthTestMode depth_test_mode,
 bool write_depth >
 void DrawTriangleDown()
 {
-    int y_begin= FastIntClampToZero( triangle_in_vertex_xy[1] );//FastIntMax( 0, triangle_in_vertex_xy[1] );
-    int y_end= FastIntMin( screen_size_y, triangle_in_vertex_xy[3] );
+    int y_begin= FastIntClampToZero( triangle_in_vertex_xy[1]>>16 );
+    int y_end= FastIntMin( screen_size_y, triangle_in_vertex_xy[3]>>16 );
 
     fixed16_t x_left, x_right, dx_left, dx_right;
     fixed16_t color_left[4], d_color_left[4];
@@ -1449,13 +1432,14 @@ void DrawTriangleDown()
     fixed16_t line_inv_z, d_line_inv_z;
 
     {
-        int dy= triangle_in_vertex_xy[3] - triangle_in_vertex_xy[1];// triangle height
-        int dx= triangle_in_vertex_xy[4] - triangle_in_vertex_xy[2];// triangle width
-        fixed16_t ddy= ( y_begin - triangle_in_vertex_xy[1] )<<16;// distance between triangle begin and lower screen border
-        dx_left= ( ( triangle_in_vertex_xy[2] - triangle_in_vertex_xy[0] ) <<16 ) / dy;
-        x_left= ( triangle_in_vertex_xy[0]<<16 ) + Fixed16Mul( ddy, dx_left );
-        dx_right= ( ( triangle_in_vertex_xy[4] - triangle_in_vertex_xy[0] ) <<16 ) / dy;
-        x_right= ( triangle_in_vertex_xy[0]<<16 ) + Fixed16Mul( ddy, dx_right );
+		fixed16_t dy= triangle_in_vertex_xy[3] - triangle_in_vertex_xy[1];// triangle height
+        fixed16_t dx= triangle_in_vertex_xy[4] - triangle_in_vertex_xy[2];// triangle width
+		fixed16_t ddy= (y_begin<<16) - triangle_in_vertex_xy[1];// distance between triangle begin and lower screen border
+		dx_left= Fixed16Div( triangle_in_vertex_xy[2] - triangle_in_vertex_xy[0], dy );
+        x_left= triangle_in_vertex_xy[0] + Fixed16Mul( ddy, dx_left );
+		dx_right= Fixed16Div( triangle_in_vertex_xy[4] - triangle_in_vertex_xy[0], dy );
+        x_right= triangle_in_vertex_xy[0] + Fixed16Mul( ddy, dx_right );
+
         fixed16_t inv_vertex_z[3];
        for( int i= 0; i< 3; i++ )
 		{
@@ -1467,9 +1451,9 @@ void DrawTriangleDown()
         {
             for( int i= 0; i< 4; i++ )
             {
-                color_left[i]= (triangle_in_color[i]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[0];
-                d_color_left[i]= ( (triangle_in_color[i+4]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[1] - color_left[i] ) / dy;
-                d_line_color[i]= ( (triangle_in_color[i+8]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[2] - (triangle_in_color[i+4]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[1] ) / dx;
+				color_left[i]= (triangle_in_color[i]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[0];
+                d_color_left[i]= Fixed16Div( (triangle_in_color[i+4]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[1] - color_left[i], dy );
+                d_line_color[i]= Fixed16Div( (triangle_in_color[i+8]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[2] - (triangle_in_color[i+4]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[1], dx );
                 color_left[i]+= Fixed16Mul( ddy, color_left[i] );
             }
         }
@@ -1477,36 +1461,36 @@ void DrawTriangleDown()
         {
             for( int i= 0; i< 2; i++ )
             {
-                tc_left[i]=Fixed16Mul( triangle_in_tex_coord[i], inv_vertex_z[0] );
-                d_tc_left[i]= ( Fixed16Mul( triangle_in_tex_coord[i+2], inv_vertex_z[1] ) - tc_left[i] ) / dy;
+				tc_left[i]= Fixed16Mul( triangle_in_tex_coord[i], inv_vertex_z[0] );
+                d_tc_left[i]= Fixed16Div( Fixed16Mul( triangle_in_tex_coord[i+2], inv_vertex_z[1] ) - tc_left[i] , dy );
                 tc_left[i]+= Fixed16Mul( ddy, d_tc_left[i] );
-                d_line_tc[i]= ( Fixed16Mul( triangle_in_tex_coord[i+4], inv_vertex_z[2] ) - Fixed16Mul( triangle_in_tex_coord[i+2], inv_vertex_z[1] ) )/ dx;
+                d_line_tc[i]= Fixed16Div( Fixed16Mul( triangle_in_tex_coord[i+4], inv_vertex_z[2] ) - Fixed16Mul( triangle_in_tex_coord[i+2], inv_vertex_z[1] ), dx );
             }
         }
         if( lighting_mode == LIGHTING_PER_VERTEX )
         {
-            light_left= inv_vertex_z[0] * triangle_in_light[0];
-            d_light_left= ( triangle_in_light[1] * inv_vertex_z[1] - light_left ) / dy;
+			light_left= inv_vertex_z[0] * triangle_in_light[0];
+            d_light_left= Fixed16Div( triangle_in_light[1] * inv_vertex_z[1] - light_left, dy );
             light_left+= Fixed16Mul( ddy, d_light_left );
-            d_line_light= ( triangle_in_light[2] * inv_vertex_z[2] - triangle_in_light[1] * inv_vertex_z[1] ) / dx;
+            d_line_light= Fixed16Div( triangle_in_light[2] * inv_vertex_z[2] - triangle_in_light[1] * inv_vertex_z[1], dx );
         }
         else if( lighting_mode == LIGHTING_FROM_LIGHTMAP || lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
         {
             for( int i= 0; i< 2; i++ )
             {
-                tc_left[i+2]=Fixed16Mul( triangle_in_lightmap_tex_coord[i], inv_vertex_z[0] );
-                d_tc_left[i+2]= ( Fixed16Mul( triangle_in_lightmap_tex_coord[i+2], inv_vertex_z[1] ) - tc_left[i+2] ) / dy;
+				tc_left[i+2]= Fixed16Mul( triangle_in_lightmap_tex_coord[i], inv_vertex_z[0] );
+                d_tc_left[i+2]= Fixed16Div( Fixed16Mul( triangle_in_lightmap_tex_coord[i+2], inv_vertex_z[1] ) - tc_left[i+2], dy );
                 tc_left[i+2]+= Fixed16Mul( ddy, d_tc_left[i+2] );
-                d_line_tc[i+2]= ( Fixed16Mul( triangle_in_lightmap_tex_coord[i+4], inv_vertex_z[2] ) - Fixed16Mul( triangle_in_lightmap_tex_coord[i+2], inv_vertex_z[1] ) )/ dx;
+                d_line_tc[i+2]= Fixed16Div( Fixed16Mul( triangle_in_lightmap_tex_coord[i+4], inv_vertex_z[2] ) - Fixed16Mul( triangle_in_lightmap_tex_coord[i+2], inv_vertex_z[1] ), dx );
             }
         }//if use lightmaps
 
 		 //shift invert z, becouse delta can be very short
-        d_inv_z_left= ( ( inv_vertex_z[1] - inv_vertex_z[0] )<< PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 ) / dy;
+        d_inv_z_left= Fixed16Div( ( inv_vertex_z[1] - inv_vertex_z[0] )<< PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2, dy );
         inv_z_left= ( inv_vertex_z[0] << PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 ) + Fixed16Mul( d_inv_z_left, ddy );
-        d_line_inv_z= ( ( inv_vertex_z[2] - inv_vertex_z[1] )<< PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 ) / dx;
+        d_line_inv_z= Fixed16Div( ( inv_vertex_z[2] - inv_vertex_z[1] )<< PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2, dx );
 
-        if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP 
+        /*if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP 
 			|| texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP || texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER_MIPMAP )
         {
             fixed16_t du_dx, du_dy, dv_dx, dv_dy;
@@ -1539,10 +1523,9 @@ void DrawTriangleDown()
                 int v_dv_dx= Fixed16MulResultToInt( dv_dx - ( Fixed16Mul( triangle_in_tex_coord[i*2+1], d_line_inv_z )>>PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 ), triangle_in_vertex_z[i] );
                 int v_du_dy= Fixed16MulResultToInt( du_dy - ( Fixed16Mul( triangle_in_tex_coord[i*2], d_colomn_inv_z )>>PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 ), triangle_in_vertex_z[i] );
                 int v_dv_dy= Fixed16MulResultToInt( dv_dy - ( Fixed16Mul( triangle_in_tex_coord[i*2+1], d_colomn_inv_z )>>PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 ), triangle_in_vertex_z[i] );
-                /*lod[i]= log2( sqrt( max( du_dx^2 + dv_dx^2, du_dy^2 + dv_dy^2 ) ) )=
-                log2( max( du_dx^2 + dv_dx^2, du_dy^2 + dv_dy^2 ) )/2
-                this expressions returns lod*2 ( lod in format fixed1_t )
-                */
+                //lod[i]= log2( sqrt( max( du_dx^2 + dv_dx^2, du_dy^2 + dv_dy^2 ) ) )=
+                //log2( max( du_dx^2 + dv_dx^2, du_dy^2 + dv_dy^2 ) )/2
+                //this expressions returns lod*2 ( lod in format fixed1_t )
                 lod[i]= FastIntLog2Clamp0( FastIntMax(
                                                v_du_dx * v_du_dx + v_dv_dx * v_dv_dx,
                                                v_du_dy * v_du_dy + v_dv_dy * v_dv_dy
@@ -1558,7 +1541,7 @@ void DrawTriangleDown()
             d_lod_left>>= 1;
             d_line_lod>>= 1;
 
-        }
+        }*/
     }//calculate delta and begin values
 
 
@@ -1638,12 +1621,7 @@ void DrawTriangleDown()
             }
 
             if( color_mode == COLOR_CONSTANT )
-            {
-                color[0]= constant_color[0];
-                color[1]= constant_color[1];
-                color[2]= constant_color[2];
-                color[3]= constant_color[3];
-            }
+				Byte4Copy( color, constant_color );
             else if( color_mode == COLOR_PER_VERTEX )
             {
                 for( int i= 0; i< 4; i++ )
@@ -1669,11 +1647,6 @@ void DrawTriangleDown()
                 {
                     TexelFetchNearestMipmap( Fixed16MulResultToInt( line_tc[0], final_z ),
                                              Fixed16MulResultToInt( line_tc[1], final_z ), Fixed16MulResultToInt( line_lod, final_z ), color );
-                    /*static const unsigned char lod_color_table[]= { 255,0,0, 128,128,0, 0,255,0, 0,128,128, 0,0,255, 128,128,255, 128,255,255, 255,255,255 };
-                    unsigned char c= Fixed16MulResultToInt( line_lod, final_z );
-                    color[0]= ( color[0] + lod_color_table[c*3] )>>1;
-                    color[1]= ( color[1] + lod_color_table[c*3+1] )>>1;
-                    color[2]= ( color[2] + lod_color_table[c*3+2] )>>1;*/
                 }
                 else if( texture_mode == TEXTURE_FAKE_FILTER_MIPMAP )
                 {
@@ -1855,7 +1828,9 @@ next_pixel:
                 line_tc[2]+= d_line_tc[2];
                 line_tc[3]+= d_line_tc[3];
             }
+#ifndef PSR_FAST_PERSECTIVE
             line_inv_z+= d_line_inv_z;
+#endif
         }//for x
 
 //next_line:
@@ -1904,6 +1879,8 @@ color/tex_coord
 light/lightmap_coord
 */
 
+
+//UNFINISHED
 template<
 enum ColorMode color_mode,
 enum TextureMode texture_mode,
@@ -1911,7 +1888,33 @@ enum BlendingMode blending_mode,
 enum AlphaTestMode alpha_test_mode,
 enum LightingMode lighting_mode,
 enum LightmapMode lightmap_mode,
-enum AdditionalLightingMode additional_lighting_mode,
+enum AdditionalEffectMode additional_lighting_mode,
+enum DepthTestMode depth_test_mode,
+bool write_depth >
+void DrawTriangleSpansFromBuffer( char* buff )
+{
+	int y_begin= FastIntClampToZero( triangle_in_vertex_xy[1] );
+	int y_end= FastIntMin( screen_size_x, triangle_in_vertex_xy[5] );
+	int y_middle= FastIntClampToZero( FastIntMin( screen_size_x-1, triangle_in_vertex_xy[3] ) );
+
+	for( int y= y_begin; y< y_middle; y++ )
+	{
+	}
+
+	for( int y= y_middle; y< y_end; y++ )
+	{
+	}
+
+}
+
+template<
+enum ColorMode color_mode,
+enum TextureMode texture_mode,
+enum BlendingMode blending_mode,
+enum AlphaTestMode alpha_test_mode,
+enum LightingMode lighting_mode,
+enum LightmapMode lightmap_mode,
+enum AdditionalEffectMode additional_lighting_mode,
 enum DepthTestMode depth_test_mode,
 bool write_depth >
 void DrawTriangleFromBuffer( char* buff )
@@ -1920,6 +1923,10 @@ void DrawTriangleFromBuffer( char* buff )
     for( int i= 0; i< 3; i++ )
     {
         triangle_in_vertex_xy[i*2]= ((int*)v)[0];
+		if( triangle_in_vertex_xy[i*2] & 0x80000000 )
+			triangle_in_divisor_vertex_index= i;
+		triangle_in_vertex_xy[i*2]<<= 1; triangle_in_vertex_xy[i*2]>>= 1;//sign bit write
+
         triangle_in_vertex_xy[i*2+1]= ((int*)v)[1];
         triangle_in_vertex_z[i]= ((int*)v)[2];
         v+= 3 * sizeof(int);
@@ -1946,8 +1953,11 @@ void DrawTriangleFromBuffer( char* buff )
             v+= sizeof(int) * 2;
         }
     }//for
-	if( triangle_in_vertex_xy[1] > triangle_in_vertex_xy[3] && triangle_in_vertex_xy[2] < triangle_in_vertex_xy[4] )
-		DrawTriangleUp< color_mode, texture_mode, blending_mode,
+	int dx= triangle_in_vertex_xy[4] - triangle_in_vertex_xy[2];
+	int dy= (triangle_in_vertex_xy[3]>>16) - (triangle_in_vertex_xy[1]>>16);
+	//if( triangle_in_vertex_xy[1] > triangle_in_vertex_xy[3] && triangle_in_vertex_xy[2] < triangle_in_vertex_xy[4] )
+	if( dx >=512 && dy>0 )
+		DrawTriangleDown< color_mode, texture_mode, blending_mode,
 		alpha_test_mode, lighting_mode, lightmap_mode, additional_lighting_mode,
 		depth_test_mode, write_depth > ();
 
@@ -1979,11 +1989,12 @@ void DrawTriangleFromBuffer( char* buff )
         v+= sizeof(int) * 2;
     }
 
-	if( triangle_in_vertex_xy[1] < triangle_in_vertex_xy[3] && triangle_in_vertex_xy[2] < triangle_in_vertex_xy[4] )
-    DrawTriangleDown< color_mode, texture_mode, blending_mode,
+	dy= (triangle_in_vertex_xy[1]>>16) - (triangle_in_vertex_xy[3]>>16);
+	if( dx >= 512 && dy>0 )
+	//if( triangle_in_vertex_xy[1] < triangle_in_vertex_xy[3] && triangle_in_vertex_xy[2] < triangle_in_vertex_xy[4] )
+    DrawTriangleUp< color_mode, texture_mode, blending_mode,
     alpha_test_mode, lighting_mode, lightmap_mode, additional_lighting_mode,
     depth_test_mode, write_depth > ();
-
 }
 
 
@@ -2357,504 +2368,108 @@ void DrawLineFromBuffer( char* buff )
 }//namespace draw
 
 
-namespace VertexProcessing
-{
-
-
-/*universal vertex format ( with all attributes )
-real vertex structures can has some of these
-*/
-struct Vertex
-{
-	float coord[3];
-	char color[4];
-	fixed16_t tex_coord[2];
-	fixed16_t lightmap_tex_coord[2];
-	unsigned short light;
-	char normal[3];
-};
-
-
-
-int clip_vertices_array[ 32 * sizeof(Vertex)/sizeof(int) ];
-int clip_nev_vertex_count;
-//returns number of output triangles normal - TO screen center
-template< int normal_x, int normal_y,
-enum ColorMode color_mode,
-enum TextureMode texture_mode,
-enum LightingMode lighting_mode,
-enum AdditionalLightingMode additional_lighting_mode >
-//input vertex - array of ints
-int ClipTriangle( int point_x, int point_y,
-	unsigned int** in_triangles, unsigned int** out_new_triangles,
-	int in_triangle_count )
-{
-	 const int vertex_size= sizeof(int)*3 + ( (color_mode==COLOR_PER_VERTEX)? 4 : 0 ) +
-                           ( (texture_mode==TEXTURE_NONE)? 0 : 2*sizeof(int) ) + 
-						   ( (lighting_mode==LIGHTING_FROM_LIGHTMAP)? 2*sizeof(int) : 0 ) +
-                           ( (lighting_mode==LIGHTING_PER_VERTEX)? sizeof(int) : 0 );
-	int dot[3];//dst from vertex to clip line
-	for(int i= 0; i< 3; i++ )
-		dot[i]= 
-			(in_triangles_indeces[i][0] - point_x) * normal_x + 
-			(in_triangles_indeces[i][1] - point_y) * normal_y;
-	
-	int vert_pos_bit_vector= int(dot[0]>0) | (int(dot[1]<0)<<1) | (int(dot[2]>0)<<2);
-
-	if( vert_pos_bit_vector == (1+2+4) )
-		return 1;
-	if( vert_pos_bit_vector == 0 )
-		return 0;
-}
-
-int triangle_in_vertex_xy[ 2 * 3 ];//screen space x and y
-fixed16_t triangle_in_vertex_z[3];//screen space z
-PSR_ALIGN_4 unsigned char triangle_in_color[ 3 * 4 ];
-int triangle_in_light[3];
-fixed16_t triangle_in_tex_coord[ 2 * 3 ];
-fixed16_t triangle_in_lightmap_tex_coord[ 2 * 3 ];
-
-/*
-this function bisect triangle, sort vertices in right order and put result to buffer
-*/
-template<
-enum ColorMode color_mode,
-enum TextureMode texture_mode,
-enum LightingMode lighting_mode,
-enum AdditionalLightingMode additional_lighting_mode >
-int DrawTriangleToBuffer( char* buff )//returns 0, if no output triangles
-{
-    const int vertex_size= sizeof(int)*3 + ( (color_mode==COLOR_PER_VERTEX)? 4 : 0 ) +
-                           ( (texture_mode==TEXTURE_NONE)? 0 : 2*sizeof(int) ) + 
-						   ( (lighting_mode==LIGHTING_FROM_LIGHTMAP)? 2*sizeof(int) : 0 ) +
-                           ( (lighting_mode==LIGHTING_PER_VERTEX)? sizeof(int) : 0 );
-
-
-    if( triangle_in_vertex_xy[1] == triangle_in_vertex_xy[3] && triangle_in_vertex_xy[1] == triangle_in_vertex_xy[5] )
-        return 0;//nothing to draw, triangle is flat, works for far small triangles
-
-    int vertex_indeces_from_upper[3]= { 0, 1, 2 };
-    int vertex_y_from_upper[3]= { triangle_in_vertex_xy[1], triangle_in_vertex_xy[3], triangle_in_vertex_xy[5] };
-
-    fixed16_t triangle_in_vertex_inv_z[]=
-    {
-        Fixed16Invert(triangle_in_vertex_z[0] ),
-        Fixed16Invert(triangle_in_vertex_z[1] ),
-        Fixed16Invert(triangle_in_vertex_z[2] )
-    };
-
-    //sort vertices from upper to lower, using bubble-sorting
-	register int tmp;
-    if( vertex_y_from_upper[0] < vertex_y_from_upper[1] )
-    {
-        tmp= vertex_y_from_upper[0];
-        vertex_y_from_upper[0]= vertex_y_from_upper[1];
-        vertex_y_from_upper[1]= tmp;
-        tmp= vertex_indeces_from_upper[0];
-        vertex_indeces_from_upper[0]= vertex_indeces_from_upper[1];
-        vertex_indeces_from_upper[1]= tmp;
-    }
-    if( vertex_y_from_upper[0] < vertex_y_from_upper[2] )
-    {
-        tmp= vertex_y_from_upper[0];
-        vertex_y_from_upper[0]= vertex_y_from_upper[2];
-        vertex_y_from_upper[2]= tmp;
-        tmp= vertex_indeces_from_upper[0];
-        vertex_indeces_from_upper[0]= vertex_indeces_from_upper[2];
-        vertex_indeces_from_upper[2]= tmp;
-    }
-    if( vertex_y_from_upper[1] < vertex_y_from_upper[2] )
-    {
-        tmp= vertex_y_from_upper[2];
-        vertex_y_from_upper[2]= vertex_y_from_upper[1];
-        vertex_y_from_upper[1]= tmp;
-        tmp= vertex_indeces_from_upper[2];
-        vertex_indeces_from_upper[2]= vertex_indeces_from_upper[1];
-        vertex_indeces_from_upper[1]= tmp;
-    }
-    //end of sorting
-
-    int div= triangle_in_vertex_xy[ vertex_indeces_from_upper[0]*2 + 1 ] - triangle_in_vertex_xy[ vertex_indeces_from_upper[2]*2 + 1 ];
-    fixed16_t k0= (( triangle_in_vertex_xy[ vertex_indeces_from_upper[0]*2 + 1 ] - triangle_in_vertex_xy[ vertex_indeces_from_upper[1]*2 + 1 ] )<<16 ) / div;
-    fixed16_t k1= (1<<16) - k0;
-    int up_down_line_x= (
-                            triangle_in_vertex_xy[ vertex_indeces_from_upper[0]<<1 ]  * k1 +
-                            triangle_in_vertex_xy[ vertex_indeces_from_upper[2]<<1 ] * k0 )>>16;
-
-
-    char* v= buff;
-    //write upper vertex attributes
-    ((int*)v)[0]= triangle_in_vertex_xy[ vertex_indeces_from_upper[0]<<1 ];
-    ((int*)v)[1]= triangle_in_vertex_xy[ (vertex_indeces_from_upper[0]<<1)+1 ];
-    ((int*)v)[2]= triangle_in_vertex_z[ vertex_indeces_from_upper[0] ];
-    v+= 3 * sizeof(int);
-    if( color_mode == COLOR_PER_VERTEX )
-    {
-        Byte4Copy( v, triangle_in_color + (vertex_indeces_from_upper[0]<<2) );
-        v+=4;
-    }
-    if( texture_mode != TEXTURE_NONE )
-    {
-        ((int*)v)[0]= triangle_in_tex_coord[ vertex_indeces_from_upper[0]<<1 ];
-        ((int*)v)[1]= triangle_in_tex_coord[ (vertex_indeces_from_upper[0]<<1)+1 ];
-        v+=sizeof(fixed16_t)*2;
-    }
-    if( lighting_mode == LIGHTING_PER_VERTEX )
-    {
-        ((int*)v)[0]= triangle_in_light[ vertex_indeces_from_upper[0] ];
-        v+= sizeof(fixed16_t);
-    }
-    if( lighting_mode == LIGHTING_FROM_LIGHTMAP )
-    {
-        ((int*)v)[0]= triangle_in_lightmap_tex_coord[ vertex_indeces_from_upper[0]<<1 ];
-        ((int*)v)[1]= triangle_in_lightmap_tex_coord[ (vertex_indeces_from_upper[0]<<1)+1 ];
-        v+=sizeof(fixed16_t)*2;
-    }
-
-  //write middle vertices
-        bool invert_vertex_order= triangle_in_vertex_xy[ vertex_indeces_from_upper[1]<<1 ] <= up_down_line_x;
-        if( invert_vertex_order )
-            v+= vertex_size;
-
-        //write interpolated vertex
-        fixed16_t final_z;
-        ((int*)v)[0]= up_down_line_x;
-        ((int*)v)[1]= triangle_in_vertex_xy[ (vertex_indeces_from_upper[1]<<1)+1 ];//y - from middle vertex
-        ((int*)v)[2]= Fixed16Invert
-                      ( Fixed16Mul( triangle_in_vertex_inv_z[ vertex_indeces_from_upper[0] ], k1 ) +
-                        Fixed16Mul( triangle_in_vertex_inv_z[ vertex_indeces_from_upper[2] ], k0 ) );//interpolate inv_z
-						
-        final_z= ((int*)v)[2];
-        v+= 3 * sizeof(int);
-        if( color_mode == COLOR_PER_VERTEX )
-        {
-			fixed16_t inv_z0= triangle_in_vertex_inv_z[ vertex_indeces_from_upper[0] ];
-            fixed16_t inv_z2= triangle_in_vertex_inv_z[ vertex_indeces_from_upper[2] ];
-            for( int i= 0; i< 4; i++ )
-            {
-                //convert in color to fixed16_t format and divede by z
-                fixed16_t div_c0= triangle_in_color[ i + (vertex_indeces_from_upper[0]<<2) ] * inv_z0;
-                fixed16_t div_c2= triangle_in_color[ i + (vertex_indeces_from_upper[2]<<2) ] * inv_z2;
-                ((unsigned char*)v)[i]= Fixed16MulResultToInt( ( Fixed16Mul( div_c0, k1 ) + Fixed16Mul( div_c2, k0 ) ), final_z );//make interpolation and write result
-            }
-            v+=4;
-        }
-        if( texture_mode != TEXTURE_NONE )
-        {
-
-            fixed16_t inv_z0= triangle_in_vertex_inv_z[ vertex_indeces_from_upper[0] ];
-            fixed16_t inv_z2= triangle_in_vertex_inv_z[ vertex_indeces_from_upper[2] ];
-            fixed16_t div_tc0= Fixed16Mul( triangle_in_tex_coord[ (vertex_indeces_from_upper[0]<<1) ], inv_z0 );
-            fixed16_t div_tc2= Fixed16Mul( triangle_in_tex_coord[ (vertex_indeces_from_upper[2]<<1) ], inv_z2 );
-            ((int*)v)[0]= Fixed16Mul( Fixed16Mul( div_tc0, k1 ) + Fixed16Mul( div_tc2, k0 ), final_z );
-            div_tc0= Fixed16Mul( triangle_in_tex_coord[ 1+(vertex_indeces_from_upper[0]<<1) ], inv_z0 );
-            div_tc2= Fixed16Mul( triangle_in_tex_coord[ 1+(vertex_indeces_from_upper[2]<<1) ], inv_z2 );
-            ((int*)v)[1]= Fixed16Mul( Fixed16Mul( div_tc0, k1 ) + Fixed16Mul( div_tc2, k0 ), final_z );
-            v+=2*sizeof(int);
-        }
-        if( lighting_mode == LIGHTING_PER_VERTEX )
-        {
-            fixed16_t div_l0= triangle_in_light[ vertex_indeces_from_upper[0] ] * triangle_in_vertex_inv_z[ vertex_indeces_from_upper[0] ];
-            fixed16_t div_l2= triangle_in_light[ vertex_indeces_from_upper[2] ] * triangle_in_vertex_inv_z[ vertex_indeces_from_upper[2] ];
-            ((int*)v)[0]= Fixed16MulResultToInt( Fixed16Mul( div_l0, k1 ) + Fixed16Mul( div_l2, k0 ), final_z );
-            v+=sizeof(int);
-        }
-        if( lighting_mode == LIGHTING_FROM_LIGHTMAP )
-        {
-            fixed16_t inv_z0= triangle_in_vertex_inv_z[ vertex_indeces_from_upper[0] ];
-            fixed16_t inv_z2= triangle_in_vertex_inv_z[ vertex_indeces_from_upper[2] ];
-            fixed16_t div_tc0= Fixed16Mul( triangle_in_lightmap_tex_coord[ (vertex_indeces_from_upper[0]<<1) ], inv_z0 );
-            fixed16_t div_tc2= Fixed16Mul( triangle_in_lightmap_tex_coord[ (vertex_indeces_from_upper[2]<<1) ], inv_z2 );
-            ((int*)v)[0]= Fixed16Mul( Fixed16Mul( div_tc0, k1 ) + Fixed16Mul( div_tc2, k0 ), final_z );
-            div_tc0= Fixed16Mul( triangle_in_lightmap_tex_coord[ 1+(vertex_indeces_from_upper[0]<<1) ], inv_z0 );
-            div_tc2= Fixed16Mul( triangle_in_lightmap_tex_coord[ 1+(vertex_indeces_from_upper[2]<<1) ], inv_z2 );
-            ((int*)v)[1]= Fixed16Mul( Fixed16Mul( div_tc0, k1 ) + Fixed16Mul( div_tc2, k0 ), final_z );
-            v+=2*sizeof(int);
-        }
-
-        if( invert_vertex_order )
-            v-= 2*vertex_size;
-
-        //write middle vertex
-        ((int*)v)[0]= triangle_in_vertex_xy[ vertex_indeces_from_upper[1]<<1 ];
-        ((int*)v)[1]= triangle_in_vertex_xy[ (vertex_indeces_from_upper[1]<<1)+1 ];
-        ((int*)v)[2]= triangle_in_vertex_z[ vertex_indeces_from_upper[1] ];
-        v+= 3 * sizeof(int);
-        if( color_mode == COLOR_PER_VERTEX )
-        {
-            Byte4Copy( v, triangle_in_color + (vertex_indeces_from_upper[1]<<2) );
-            v+=4;
-        }
-        if( texture_mode != TEXTURE_NONE )
-        {
-            ((int*)v)[0]= triangle_in_tex_coord[ vertex_indeces_from_upper[1]<<1 ];
-            ((int*)v)[1]= triangle_in_tex_coord[ (vertex_indeces_from_upper[1]<<1)+1 ];
-            v+=sizeof(fixed16_t)*2;
-        }
-        if( lighting_mode == LIGHTING_PER_VERTEX )
-        {
-            ((int*)v)[0]= triangle_in_light[ vertex_indeces_from_upper[1] ];
-            v+= sizeof(fixed16_t);
-        }
-        if( lighting_mode == LIGHTING_FROM_LIGHTMAP )
-        {
-            ((int*)v)[0]= triangle_in_lightmap_tex_coord[ vertex_indeces_from_upper[1]<<1 ];
-            ((int*)v)[1]= triangle_in_lightmap_tex_coord[ (vertex_indeces_from_upper[1]<<1)+1  ];
-            v+=sizeof(fixed16_t)*2;
-        }
-        if( invert_vertex_order )
-            v+= vertex_size;
-
-
-
-    //write lower vertex attributes
-    ((int*)v)[0]= triangle_in_vertex_xy[ vertex_indeces_from_upper[2]<<1 ];
-    ((int*)v)[1]= triangle_in_vertex_xy[ (vertex_indeces_from_upper[2]<<1)+1 ];
-    ((int*)v)[2]= triangle_in_vertex_z[ vertex_indeces_from_upper[2] ];
-    v+= 3 * sizeof(int);
-    if( color_mode == COLOR_PER_VERTEX )
-    {
-        Byte4Copy( v, triangle_in_color + (vertex_indeces_from_upper[2]<<2) );
-        v+=4;
-    }
-    if( texture_mode != TEXTURE_NONE )
-    {
-        ((int*)v)[0]= triangle_in_tex_coord[ vertex_indeces_from_upper[2]<<1 ];
-        ((int*)v)[1]= triangle_in_tex_coord[ (vertex_indeces_from_upper[2]<<1)+1 ];
-        v+=sizeof(fixed16_t)*2;
-    }
-    if( lighting_mode == LIGHTING_PER_VERTEX )
-    {
-        ((int*)v)[0]= triangle_in_light[ vertex_indeces_from_upper[2] ];
-        v+= sizeof(fixed16_t);
-    }
-    if( lighting_mode == LIGHTING_FROM_LIGHTMAP )
-    {
-        ((int*)v)[0]= triangle_in_lightmap_tex_coord[ vertex_indeces_from_upper[2]<<1 ];
-        ((int*)v)[1]= triangle_in_lightmap_tex_coord[ (vertex_indeces_from_upper[2]<<1)+1  ];
-        v+=sizeof(fixed16_t)*2;
-    }
-
-	return 4;
-}
-
-
-
-int cull_passed_vertices[2];
-int cull_lost_vertices[2];
-int cull_new_vertices_neighbors[4];
-float cull_new_vertices_interpolation_k[2];
-//returns number of  culled vertices
-int CullTriangleByZNearPlane( float z0, float z1, float z2 )
-{
-	bool  plane_pos[]= { z0 > PSR_MIN_ZMIN_FLOAT, z1 > PSR_MIN_ZMIN_FLOAT, z2 > PSR_MIN_ZMIN_FLOAT };
-	if( plane_pos[0] & plane_pos[1] & plane_pos[2] )
-		return 0;
-	if( !( plane_pos[0] | plane_pos[1] | plane_pos[2] ) )
-		return 3;
-
-	int front_vertex_count= int(plane_pos[0]) + int(plane_pos[1]) + int(plane_pos[2]);
-
-	if( front_vertex_count == 1 )
-	{
-		if( plane_pos[0] )
-		{
-			cull_passed_vertices[0]= 0;
-			cull_lost_vertices[0]= 1;
-			cull_lost_vertices[1]= 2;
-			float edge_z_len= z0- z1;
-			float forward_vertex_z_dst= z0 - PSR_MIN_ZMIN_FLOAT;
-			cull_new_vertices_interpolation_k[0]= 1.0f - forward_vertex_z_dst / edge_z_len;
-			edge_z_len= z0- z2;
-			cull_new_vertices_interpolation_k[1]= 1.0f - forward_vertex_z_dst / edge_z_len;
-		}
-		else if( plane_pos[1] )
-		{
-			cull_passed_vertices[0]= 1;
-			cull_lost_vertices[0]= 0;
-			cull_lost_vertices[1]= 2;
-			float edge_z_len= z1- z0;
-			float forward_vertex_z_dst= z1 - PSR_MIN_ZMIN_FLOAT;
-			cull_new_vertices_interpolation_k[0]= 1.0f - forward_vertex_z_dst / edge_z_len;
-			edge_z_len= z1- z2;
-			cull_new_vertices_interpolation_k[1]= 1.0f - forward_vertex_z_dst / edge_z_len;
-		}
-		else// if( plane_pos[2] )
-		{
-			cull_passed_vertices[0]= 2;
-			cull_lost_vertices[0]= 0;
-			cull_lost_vertices[1]= 1;
-			float edge_z_len= z2- z0;
-			float forward_vertex_z_dst= z2 - PSR_MIN_ZMIN_FLOAT;
-			cull_new_vertices_interpolation_k[0]= 1.0f - forward_vertex_z_dst / edge_z_len;
-			edge_z_len= z2- z1;
-			cull_new_vertices_interpolation_k[1]= 1.0f - forward_vertex_z_dst / edge_z_len;
-		}
-		return 2;
-	}
-	else//if 2 forward vertices
-	{
-		if( !plane_pos[0] )
-		{
-			cull_passed_vertices[0]= 1;
-			cull_passed_vertices[1]= 2;
-			cull_lost_vertices[0]= 0;
-			float edge_z_len= z0- z1;
-			float forward_vertex_z_dst= z0 - PSR_MIN_ZMIN_FLOAT;
-			cull_new_vertices_interpolation_k[0]= forward_vertex_z_dst / edge_z_len;
-			edge_z_len= z0- z2;
-			cull_new_vertices_interpolation_k[1]= forward_vertex_z_dst / edge_z_len;
-		}
-		else if( !plane_pos[1] )
-		{
-			cull_passed_vertices[0]= 0;
-			cull_passed_vertices[1]= 2;
-			cull_lost_vertices[0]= 1;
-			float edge_z_len= z1- z0;
-			float forward_vertex_z_dst= z1 - PSR_MIN_ZMIN_FLOAT;
-			cull_new_vertices_interpolation_k[0]= forward_vertex_z_dst / edge_z_len;
-			edge_z_len= z1- z2;
-			cull_new_vertices_interpolation_k[1]= forward_vertex_z_dst / edge_z_len;
-		}
-		else// if( !plane_pos[2] )
-		{
-			cull_passed_vertices[0]= 0;
-			cull_passed_vertices[1]= 1;
-			cull_lost_vertices[0]= 2;
-			float edge_z_len= z2- z0;
-			float forward_vertex_z_dst= z2 - PSR_MIN_ZMIN_FLOAT;
-			cull_new_vertices_interpolation_k[0]= forward_vertex_z_dst / edge_z_len;
-			edge_z_len= z2- z1;
-			cull_new_vertices_interpolation_k[1]= forward_vertex_z_dst / edge_z_len;
-		}
-		return 1;
-	}
-}
-
-
-void DrawSpriteToBuffer( char* buff, int x0, int y0, int x1, int y1, fixed16_t depth )
-{
-	int* b= (int*)buff;
-	b[0]= x0;
-	b[1]= y0;
-	b[2]= x1;
-	b[3]= y1;
-	b[4]= depth;
-}
-
-}//namespace VertexProcessing
-
-
-
-
-
 extern "C"
 {
 //world rendering functions
-int (*DrawWorldTriangleToBuffer)(char* buff)= VertexProcessing::DrawTriangleToBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, LIGHTING_FROM_LIGHTMAP, ADDITIONAL_LIGHTING_NONE >;
 void (*DrawWorldTriangleTextureNearestLightmapLinear)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureNearestLightmapLiearRGBS)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureNearestLightmapColoredLinear)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 
 void (*DrawWorldTriangleTextureLinearLightmapLinear)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureLinearLightmapLiearRGBS)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureLinearLightmapColoredLinear)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 
 void (*DrawWorldTriangleTextureFakeFilterLightmapLinear)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureFakeFilterLightmapLiearRGBS)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureFakeFilterLightmapColoredLinear)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 
 //world rendering functions with avg blend
 void (*DrawWorldTriangleTextureNearestLightmapLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureNearestLightmapLiearRGBSBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureNearestLightmapColoredLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 
 void (*DrawWorldTriangleTextureLinearLightmapLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureLinearLightmapLiearRGBSBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureLinearLightmapColoredLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 
 void (*DrawWorldTriangleTextureFakeFilterLightmapLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureFakeFilterLightmapLiearRGBSBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureFakeFilterLightmapColoredLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 
 
 
 //world rendering functions PALETTIZED
 void (*DrawWorldTriangleTextureNearestPalettizedLightmapLinear)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureNearestPalettizedLightmapLiearRGBS)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureNearestPalettizedLightmapColoredLinear)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 
 void (*DrawWorldTriangleTextureLinearPalettizedLightmapLinear)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureLinearPalettizedLightmapLiearRGBS)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureLinearPalettizedLightmapColoredLinear)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 
 void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapLinear)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapLiearRGBS)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapColoredLinear)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 
 //world rendering functions with avg blend PALETTIZED
 void (*DrawWorldTriangleTextureNearestPalettizedLightmapLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureNearestPalettizedLightmapLiearRGBSBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureNearestPalettizedLightmapColoredLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 
 void (*DrawWorldTriangleTextureLinearPalettizedLightmapLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureLinearPalettizedLightmapLiearRGBSBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureLinearPalettizedLightmapColoredLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 
 void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapLiearRGBSBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapColoredLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 
 
 
 
-void (*DrawParticleSpriteToBuffer)( char* buff, int x0, int y0, int x1, int y1, fixed16_t depth )= VertexProcessing::DrawSpriteToBuffer;
 void (*DrawParticleSprite)(int x0, int y0, int x1, int y1, fixed16_t depth)= Draw::DrawSprite
 < TEXTURE_NONE, BLENDING_SRC_ALPHA, ALPHA_TEST_NONE, LIGHTING_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawParticleSpriteNoBlend)(int x0, int y0, int x1, int y1, fixed16_t depth)= Draw::DrawSprite
 < TEXTURE_NONE, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, DEPTH_TEST_LESS, true >;
 
-int (*DrawSkyTriangleToBuffer)( char* buff )= VertexProcessing::DrawTriangleToBuffer
-<COLOR_FROM_TEXTURE, TEXTURE_NEAREST, LIGHTING_NONE, ADDITIONAL_LIGHTING_NONE>;
 void (*DrawSkyTriangleFromBuffer)( char* buff ) = Draw::DrawTriangleFromBuffer
-<COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_LIGHTING_NONE, DEPTH_TEST_LESS, true>;
+<COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true>;
 
 void (*DrawWorldSprite)(int x0, int y0, int x1, int y1, fixed16_t depth) =
 Draw::DrawSprite<TEXTURE_NEAREST, BLENDING_AVG, ALPHA_TEST_DISCARD_GREATER_HALF, LIGHTING_NONE, DEPTH_TEST_LESS, true >;

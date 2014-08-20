@@ -9,7 +9,7 @@ extern Texture* R_FindTexture( char* name );
 extern Texture* R_FindTexture(image_t* image);
 extern int R_GetImageIndex(image_t* image);
 
-void DrawSpriteEntity( entity_t* ent, m_Mat4* mat )
+void DrawSpriteEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 {
 	model_t* model;
 	model= ent->model;
@@ -61,17 +61,17 @@ void DrawSpriteEntity( entity_t* ent, m_Mat4* mat )
 }
 
 
-void DrawBrushEntity(  entity_t* ent, m_Mat4* mat )
+void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos, bool is_aplha )
 {
 
 	model_t* model= ent->model;
 	int i;
 	msurface_t* surf;
 	
-	if( model->nummodelsurfaces > 128 )//HACK
+	if( model->firstmodelsurface == 0)//HACK
 		return;
 
-	triangle_draw_func_t func= GetWorldDrawFunc( TEXTURE_NEAREST, false );
+	triangle_draw_func_t func= GetWorldNearDrawFunc( is_aplha );
 
 	float to_rad= 3.1415926535f / 180.0f;
 	m_Mat4 rot_x, rot_y, rot_z, translate, result;
@@ -92,6 +92,13 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat )
 
 	for( i= 0, surf= model->surfaces + model->firstmodelsurface; i< model->nummodelsurfaces; i++, surf++ )
 	{
+		/*mplane_t* plane= surf->plane;
+		float dot= DotProduct(plane->normal, cam_pos) - plane->dist;
+		if( (surf->flags&SURF_PLANEBACK) != NULL )
+			dot= -dot;
+		if( dot <= 0.0f )
+			continue;*/
+
 		if( (surf->flags & (SURF_DRAWSKYBOX|SURF_DRAWBACKGROUND|SURF_DRAWSKY)) !=0 )
 			continue;
 		int img_num= ent->frame % surf->texinfo->numframes;
@@ -113,6 +120,6 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat )
 	}
 }
 
-void DrawAliasEntity(  entity_t* ent, m_Mat4* mat )
+void DrawAliasEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 {
 }

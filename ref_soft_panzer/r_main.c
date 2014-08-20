@@ -232,13 +232,10 @@ void Draw_GetPalette (void)
 		g = pal[i*3+1];
 		b = pal[i*3+2];
 
-        /*out[0] = r;
+        out[0] = r;
         out[1] = g;
-        out[2] = b;*/
-		out[0] = b;
-        out[1] = g;
-        out[2] = r;//PANZER - swap channels
-
+        out[2] = b;
+		ColorByteSwap(out);
 	}
 
 	free (pal);
@@ -348,6 +345,7 @@ GetRefAPI
 void PANZER_Shutdown(void)
 {
 	extern void PR_ShutdownRendering();
+	R_UnRegister();
 	PR_ShutdownRendering();
 	PRast_Shutdown();
 	SWimp_Shutdown();
@@ -472,9 +470,10 @@ void PANZER_DrawStretchRaw(int x, int y, int w, int h, int cols, int rows, byte 
 			mixed_colors[5]= ( colors[ 9] * ddu1 + colors[13] * ddu );
 			mixed_colors[6]= ( colors[10] * ddu1 + colors[14] * ddu );
 
-			dst[0]= ( mixed_colors[0] * ddv1 + mixed_colors[4] * ddv ) >> 16;
+			//write to dst swapped channels ( 0xAARRGGBB )
+			dst[2]= ( mixed_colors[0] * ddv1 + mixed_colors[4] * ddv ) >> 16;
 			dst[1]= ( mixed_colors[1] * ddv1 + mixed_colors[5] * ddv ) >> 16;
-			dst[2]= ( mixed_colors[2] * ddv1 + mixed_colors[6] * ddv ) >> 16;
+			dst[0]= ( mixed_colors[2] * ddv1 + mixed_colors[6] * ddv ) >> 16;
 
 			//simple nearest video filtration
 			//*((int*)dst)= ((int*)cinematic_palette)[ src[(u>>16)] ];  
@@ -561,11 +560,6 @@ qboolean PANZER_Init ( void *hinstance, void *wndproc )
 	ri.Con_Printf (PRINT_ALL, "panzer_ref_soft version: "REF_VERSION"\n");
 
 	return true;
-}
-
-void DoNothing()
-{
-	return;
 }
 
 refexport_t GetRefAPI (refimport_t rimp)

@@ -17,9 +17,9 @@ extern "C" void PANZER_DrawPic(int x, int y, char *name);
 extern "C" swstate_t sw_state;
 
 
-void DrawSpriteEntity( entity_t* ent, m_Mat4* mat );
-void DrawBrushEntity( entity_t* ent, m_Mat4* mat );
-void DrawAliasEntity(  entity_t* ent, m_Mat4* mat );
+void DrawSpriteEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos );
+void DrawBrushEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos, bool is_aplha );
+void DrawAliasEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos );
 /*
 ----command buffer-------
 */
@@ -486,9 +486,6 @@ extern "C" void PANZER_DrawFill(int x, int y, int w, int h, int c)
 
 extern "C" void PANZER_SetSky(char *name, float rotate, vec3_t axis)
 {
-	is_any_sky= true;
-	return;//HACK, temporary sky not need
-
 	static const char*const suf[6] = {"ft", "up", "lf", "bk", "dn", "rt"};
 	static const int	r_skysideimage[6] = {5, 2, 4, 1, 0, 3};
 	char	pathname[MAX_QPATH];
@@ -577,12 +574,12 @@ void DrawSkyBox( const m_Mat4* mat )
 		m_Vec3* v[]= { transformed_vertices + ind[0], transformed_vertices + ind[1], transformed_vertices + ind[2] };
 		if( culled_vertices == 0 )
 		{
-			triangle_in_vertex_xy[0]= ( v[0]->x * transformed_inv_w[ind[0]] + 1.0f ) * vid_width2;
-			triangle_in_vertex_xy[1]= ( v[0]->y * transformed_inv_w[ind[0]] + 1.0f ) * vid_height2;
-			triangle_in_vertex_xy[2]= ( v[1]->x * transformed_inv_w[ind[1]] + 1.0f ) * vid_width2;
-			triangle_in_vertex_xy[3]= ( v[1]->y * transformed_inv_w[ind[1]] + 1.0f ) * vid_height2;
-			triangle_in_vertex_xy[4]= ( v[2]->x * transformed_inv_w[ind[2]] + 1.0f ) * vid_width2;
-			triangle_in_vertex_xy[5]= ( v[2]->y * transformed_inv_w[ind[2]] + 1.0f ) * vid_height2;
+			triangle_in_vertex_xy[0]= ( v[0]->x * transformed_inv_w[ind[0]] + 1.0f ) * vid_width2 *65536.0f;
+			triangle_in_vertex_xy[1]= ( v[0]->y * transformed_inv_w[ind[0]] + 1.0f ) * vid_height2*65536.0f;
+			triangle_in_vertex_xy[2]= ( v[1]->x * transformed_inv_w[ind[1]] + 1.0f ) * vid_width2 *65536.0f;
+			triangle_in_vertex_xy[3]= ( v[1]->y * transformed_inv_w[ind[1]] + 1.0f ) * vid_height2*65536.0f;
+			triangle_in_vertex_xy[4]= ( v[2]->x * transformed_inv_w[ind[2]] + 1.0f ) * vid_width2 *65536.0f;
+			triangle_in_vertex_xy[5]= ( v[2]->y * transformed_inv_w[ind[2]] + 1.0f ) * vid_height2*65536.0f;
 			triangle_in_vertex_z[0]= int( 65536.0f * z[0] );
 			triangle_in_vertex_z[1]= int( 65536.0f * z[1] );
 			triangle_in_vertex_z[2]= int( 65536.0f * z[2] );
@@ -639,8 +636,8 @@ void DrawSkyBox( const m_Mat4* mat )
 
 
 			char* buff= ((char*)call) + sizeof(DrawTriangleCall);
-			if( DrawSkyTriangleToBuffer(buff) != 0 )
-				call->triangle_count++;
+			//if( DrawSkyTriangleToBuffer(buff) != 0 )
+			//	call->triangle_count++;
 		}
 		else//if( culled_vertices == 1 )
 		{
@@ -675,11 +672,11 @@ void DrawSkyBox( const m_Mat4* mat )
 			triangle_in_tex_coord[5]= int(interp*f_tex_scaler);
 
 			char* buff= ((char*)call) + sizeof(DrawTriangleCall);
-			if( DrawSkyTriangleToBuffer(buff) != 0 )
+			/*if( DrawSkyTriangleToBuffer(buff) != 0 )
 			{
 				buff+= call->vertex_size*4;
 				call->triangle_count++;
-			}
+			}*/
 
 			interp= v[ cull_passed_vertices[1] ]->x * cull_new_vertices_interpolation_k[1] + 
 					v[ cull_lost_vertices[0] ]->x * ( 1.0f - cull_new_vertices_interpolation_k[1] );
@@ -697,8 +694,8 @@ void DrawSkyBox( const m_Mat4* mat )
 					float(cube_triangles_tc[i*6+  cull_lost_vertices[0]*2+1]) * ( 1.0f - cull_new_vertices_interpolation_k[1] );
 			triangle_in_tex_coord[1]= int(interp*f_tex_scaler);
 			
-			if( DrawSkyTriangleToBuffer(buff)!=0 )
-				call->triangle_count++;
+			//if( DrawSkyTriangleToBuffer(buff)!=0 )
+			//	call->triangle_count++;
 		}
 		command_buffer.current_pos+= sizeof(DrawTriangleCall) + call->vertex_size * 4 * call->triangle_count;
 	}//for skybox triangles
@@ -790,22 +787,33 @@ void Mat4RotateZ(m_Mat4* mat, float a)
 }
 
 
-void DrawEntities(m_Mat4* mat)
+void DrawEntities(m_Mat4* mat, vec3_t cam_pos, bool alpha_entities )
 {
 	entity_t* ent;
 	model_t* model;
 	int i;
 	for(  i= 0, ent= r_newrefdef.entities; i< r_newrefdef.num_entities; i++, ent++ )
 	{
+		if( alpha_entities )
+		{
+			if( (ent->flags&RF_TRANSLUCENT)==0 )
+				continue;
+		}
+		else
+		{
+			if( (ent->flags&RF_TRANSLUCENT)!=0 )
+				continue;
+		}
+
 		model= ent->model;
 		if(model==NULL)
 			continue;
 		if( model->type == mod_sprite )
-			DrawSpriteEntity( ent, mat );
+			DrawSpriteEntity( ent, mat, cam_pos );
 		else if( model->type == mod_brush )
-			DrawBrushEntity( ent, mat );
+			DrawBrushEntity( ent, mat, cam_pos, alpha_entities );
 		else if( model->type == mod_alias )
-			DrawAliasEntity( ent, mat );
+			DrawAliasEntity( ent, mat, cam_pos );
 		else
 		{
 			printf( "unknown model type!\n" );
@@ -818,6 +826,7 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 	r_newrefdef= *fd;
 	r_framecount++;
 
+	SetWorldFrame( int(r_newrefdef.time*2.0f) );
 
 	command_buffer.current_pos+= ComIn_ClearDepthBuffer( 
 		(char*)command_buffer.buffer + command_buffer.current_pos, 0xFFFF );
@@ -857,17 +866,31 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 		pers[5]= 1.0f / tan( fd->fov_y * to_rad * 0.5f );
 
 		result=  scale * rot_z * rot_x * rot_y * basis_change * pers;
-		//DrawSkyBox(&result);
 
 		result= shift * scale * rot_z * rot_x * rot_y * basis_change * pers;
 		SetFov(fd->fov_y * to_rad);
-		DrawWorldNodes(&result, fd->vieworg);
-		DrawEntities(&result);
+		BuildSurfaceLists(&result, fd->vieworg);
+
+		SetSurfaceMatrix(&result);
+		DrawWorldTextureChains();
+
+		SetSurfaceMatrix(&result);
+		DrawEntities(&result, fd->vieworg, false );
+
+		SetSurfaceMatrix(&result);
+		DrawWorldAlphaSurfaces();
+
+		SetSurfaceMatrix(&result);
+		DrawEntities(&result, fd->vieworg, true );
+
+
 		DrawParticles( &result,  fd->particles, fd->num_particles, fd->fov_y * to_rad );
 
 
 		unsigned char blend_color[]= {
-			fd->blend[2]*255.0f, fd->blend[1]*255.0f, fd->blend[0]*255.0f, fd->blend[3]*255.0f };
+			fd->blend[0]*255.0f, fd->blend[1]*255.0f, fd->blend[2]*255.0f, fd->blend[3]*255.0f };
+		ColorByteSwap( blend_color );
+
 		if( blend_color[3] > 4 )
 			command_buffer.current_pos+= ComIn_AlphaBlendColorBuffer( 
 				(char*)command_buffer.buffer + command_buffer.current_pos,

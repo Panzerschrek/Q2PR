@@ -39,10 +39,10 @@ enum LightingMode
 	LIGHTING_FROM_LIGHTMAP_OVERBRIGHT2// light= lightmap_light * 2
 };
 
-enum AdditionalLightingMode
+enum AdditionalEffectMode
 {
-	ADDITIONAL_LIGHTING_NONE,
-	ADDITIONAL_LIGHTING_POINT
+	ADDITIONAL_EFFECT_NONE,
+	ADDITIONAL_EFFECT_TURBULENCE
 };
 
 enum LightmapMode
