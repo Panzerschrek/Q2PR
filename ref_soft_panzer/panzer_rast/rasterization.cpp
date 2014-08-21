@@ -1947,13 +1947,25 @@ void DrawTriangleFromBuffer( char* buff )
             v+= sizeof(int) * 2;
         }
     }//for
-	int dx= triangle_in_vertex_xy[4] - triangle_in_vertex_xy[2];
-	int dy= (triangle_in_vertex_xy[3]>>16) - (triangle_in_vertex_xy[1]>>16);
-	//if( triangle_in_vertex_xy[1] > triangle_in_vertex_xy[3] && triangle_in_vertex_xy[2] < triangle_in_vertex_xy[4] )
-	if( dx >=512 && dy>0 )
+	int dx= Fixed16FloorToInt(triangle_in_vertex_xy[4]) - Fixed16CeilToInt(triangle_in_vertex_xy[2]);
+	int dy= Fixed16FloorToInt(triangle_in_vertex_xy[3]) - Fixed16CeilToInt(triangle_in_vertex_xy[1]);
+	//if triangle dimensions is very small, extend it to pixel size, to prevent integet overflow in delta calculations
+	if( dx == 0 )
+	{
+		triangle_in_vertex_xy[2]= Fixed16Floor(triangle_in_vertex_xy[2])+2;
+		triangle_in_vertex_xy[4]= Fixed16Ceil(triangle_in_vertex_xy[4])-2;
+	}
+	if( dx >=0 && dy>=0 )
+	{
+		if( dy == 0 )
+		{
+			triangle_in_vertex_xy[3]= Fixed16Ceil(triangle_in_vertex_xy[3])-2;
+			triangle_in_vertex_xy[1]= Fixed16Floor(triangle_in_vertex_xy[1])+2;//lower vertex
+		}
 		DrawTriangleDown< color_mode, texture_mode, blending_mode,
 		alpha_test_mode, lighting_mode, lightmap_mode, additional_lighting_mode,
 		depth_test_mode, write_depth > ();
+	}
 
     //lower vertex
     triangle_in_vertex_xy[0]= ((int*)v)[0];
@@ -1983,12 +1995,19 @@ void DrawTriangleFromBuffer( char* buff )
         v+= sizeof(int) * 2;
     }
 
-	dy= (triangle_in_vertex_xy[1]>>16) - (triangle_in_vertex_xy[3]>>16);
-	if( dx >= 512 && dy>0 )
-	//if( triangle_in_vertex_xy[1] < triangle_in_vertex_xy[3] && triangle_in_vertex_xy[2] < triangle_in_vertex_xy[4] )
-    DrawTriangleUp< color_mode, texture_mode, blending_mode,
-    alpha_test_mode, lighting_mode, lightmap_mode, additional_lighting_mode,
-    depth_test_mode, write_depth > ();
+	dy= Fixed16FloorToInt(triangle_in_vertex_xy[1]) - Fixed16CeilToInt(triangle_in_vertex_xy[3]);
+	if( dx >=0 && dy>=0 )
+	{
+		//if triangle dimensions is very small, extend it to pixel size, to prevent integet overflow in delta calculations
+		if( dy == 0 )
+		{
+			triangle_in_vertex_xy[3]= Fixed16Floor(triangle_in_vertex_xy[3])+2;
+			triangle_in_vertex_xy[1]= Fixed16Ceil(triangle_in_vertex_xy[1])-2;//upper vertex
+		}
+		DrawTriangleUp< color_mode, texture_mode, blending_mode,
+		alpha_test_mode, lighting_mode, lightmap_mode, additional_lighting_mode,
+		depth_test_mode, write_depth > ();
+	}
 }
 
 
@@ -2457,7 +2476,7 @@ void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapColoredLinearBlend)(c
 
 
 void (*DrawTexturedModelTriangleFromBuffer)( char* buff )= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_PER_VERTEX, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 
 
 void (*DrawParticleSprite)(int x0, int y0, int x1, int y1, fixed16_t depth)= Draw::DrawSprite

@@ -499,7 +499,7 @@ int (*DrawSkyTriangleToBuffer)( char* buff )= VertexProcessing::DrawTriangleToBu
 <COLOR_FROM_TEXTURE, TEXTURE_NEAREST, LIGHTING_NONE, ADDITIONAL_EFFECT_NONE>;
 
 int (*DrawTexturedModelTriangleToBuffer)(char*buff)= VertexProcessing::DrawTriangleToBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, LIGHTING_NONE, ADDITIONAL_EFFECT_NONE >;
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, LIGHTING_PER_VERTEX, ADDITIONAL_EFFECT_NONE >;
 
 
 void (*DrawParticleSpriteToBuffer)( char* buff, int x0, int y0, int x1, int y1, fixed16_t depth )= VertexProcessing::DrawSpriteToBuffer;

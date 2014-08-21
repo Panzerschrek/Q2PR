@@ -42,8 +42,8 @@ typedef int fixed16_t;
 
 #define PSR_MAX_NORMALIZED_LIGHT 127// color= ( normalized_light * 256 * color )/256
 
-#define PSR_MIN_ZMIN_FLOAT 0.25f//0.0625f
-#define PSR_MIN_ZMIN (65536/4)// minimal value of zmin in fixed16_t format
+#define PSR_MIN_ZMIN_FLOAT 0.0128f
+#define PSR_MIN_ZMIN (65536/8)// minimal value of zmin in fixed16_t format
 #define PSR_MAX_ZMAX (1024)// maximal value of zmax in INT format
 
 //if defined, z calculates every PSR_LINE_SEGMENT_SIZE pixel in scanline

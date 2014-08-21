@@ -130,6 +130,13 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos, bool is_aplha
 	}
 }
 
+
+#define NUMVERTEXNORMALS	162
+
+float	r_avertexnormals[NUMVERTEXNORMALS][3] = {
+#include "anorms.h"
+};
+
 void DrawAliasEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 {
 	float width_f= float(vid.width) * 65536.0f;
@@ -165,7 +172,7 @@ void DrawAliasEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 
 	DrawTriangleCall* call= (DrawTriangleCall*)buff;
 	call->triangle_count= 0;
-	call->vertex_size= 3 * sizeof(int) + 2 * sizeof(int);
+	call->vertex_size= 3 * sizeof(int) + 2 * sizeof(int) + sizeof(int);
 	call->DrawFromBufferFunc= DrawTexturedModelTriangleFromBuffer;
 	buff+= sizeof(DrawTriangleCall);
 
@@ -174,6 +181,7 @@ void DrawAliasEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 	for( int t= 0; t< model->num_tris; t++, tris++ )
 	{
 		m_Vec3 coord[3];//screen space coord
+		int light[3];
 		short vert_st[6];
 		for( int i= 0; i< 3; i++ )//for 3 vertices
 		{
@@ -186,6 +194,9 @@ void DrawAliasEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 			coord[i]= coord[i] * result_mat;
 			vert_st[i*2  ]= st[ tris->index_st[i] ].s;
 			vert_st[i*2+1]= st[ tris->index_st[i] ].t;
+
+			light[i]= int( r_avertexnormals [ frame->verts[ tris->index_xyz[i] ].lightnormalindex ][2] * 200.0f ) + 120.0f;
+			if( light[i] < 32 ) light[i]= 32;
 		}
 		if( coord[0].z < PSR_MIN_ZMIN_FLOAT || coord[1].z < PSR_MIN_ZMIN_FLOAT || coord[2].z < PSR_MIN_ZMIN_FLOAT )
 			continue;
@@ -224,6 +235,9 @@ void DrawAliasEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 		triangle_in_tex_coord[3]= st[tris->index_st[1]].t*tex_scaler[1];
 		triangle_in_tex_coord[4]= st[tris->index_st[2]].s*tex_scaler[0];
 		triangle_in_tex_coord[5]= st[tris->index_st[2]].t*tex_scaler[1];
+		triangle_in_light[0]= light[0];
+		triangle_in_light[1]= light[1];
+		triangle_in_light[2]= light[2];
 
 		if( DrawTexturedModelTriangleToBuffer( buff ) != 0 )
 		{
