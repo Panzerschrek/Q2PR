@@ -89,6 +89,10 @@ extern void (*DrawWorldSprite)(int x0, int y0, int x1, int y1, fixed16_t depth);
 extern int (*DrawSkyTriangleToBuffer)( char* buff );
 extern void (*DrawSkyTriangleFromBuffer)( char* buff );
 
+
+extern int (*DrawTexturedModelTriangleToBuffer)(char*buff);
+extern void (*DrawTexturedModelTriangleFromBuffer)( char* buff );
+
 //for model drawing
 extern int (*DrawMonoLightedTexturedTriangleToBuffer)( char* buff );
 extern void (*DrawMonoLightedTexturedTriangleFromBuffer)( char* buff );

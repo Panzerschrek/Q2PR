@@ -831,6 +831,7 @@ typedef struct swstate_s
 	int      prev_mode;				// last valid SW mode
 
 	byte		gammatable[256];
+	qboolean	hw_gamma_supported;
 	byte		currentpalette[1024];
 
 } swstate_t;
@@ -869,10 +870,14 @@ IMPLEMENTATION FUNCTIONS
 ====================================================================
 */
 
+void	SWimp_SaveOldHWGamma();
+void	SWimp_SetHWGamma();
+void	SWimp_RestoreHWGamma();
+void	SWimp_OpenSystemConsole();
+
 void		SWimp_BeginFrame( float camera_separation );
 void		SWimp_EndFrame (void);
 int			SWimp_Init( void *hInstance, void *wndProc );
-void		SWimp_SetPalette( const unsigned char *palette);
 void		SWimp_Shutdown( void );
 rserr_t		SWimp_SetMode( int *pwidth, int *pheight, int mode, qboolean fullscreen );
 void		SWimp_AppActivate( qboolean active );

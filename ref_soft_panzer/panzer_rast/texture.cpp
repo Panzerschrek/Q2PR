@@ -216,8 +216,57 @@ void Texture::ResizeToNearestPOTCeil( const unsigned char* in_data )
 	{//copy per int
 		for( int y= 0; y< size_y; y++ )
 			for( int x= 0; x< size_x; x++ )
-					((int*)data)[ x + (y<<size_x_log2) ]= 
-					((int*)in_data)[ ((x*x2x_new)>>16) + ((y*y2y_new)>>16) * original_size_x ];
+			{
+				//make linear color interpolation
+				int old_x= (x*x2x_new);
+				int old_y= (y*y2y_new);
+				int dx= (old_x>>8)&0xFF;
+				int dy= (old_y>>8)&0xFF;
+				old_x>>=16; old_y>>= 16;
+				int old_x1= old_x+1, old_y1= old_y+1;
+
+				int dx1= 255 - dx, dy1= 255 - dy;
+
+				int colors[16];
+				int mixed_colors[8];
+				int addr= (old_x + old_y *original_size_x)<<2;
+				colors[0 ]= in_data[addr  ];
+				colors[1 ]= in_data[addr+1];
+				colors[2 ]= in_data[addr+2];
+				colors[3 ]= in_data[addr+3];
+				addr= (old_x1 + old_y *original_size_x)<<2;
+				colors[4 ]= in_data[addr  ];
+				colors[5 ]= in_data[addr+1];
+				colors[6 ]= in_data[addr+2];
+				colors[7 ]= in_data[addr+3];
+				addr= (old_x + old_y1 *original_size_x)<<2;
+				colors[8 ]= in_data[addr  ];
+				colors[9 ]= in_data[addr+1];
+				colors[10]= in_data[addr+2];
+				colors[11]= in_data[addr+3];
+				addr= (old_x1 + old_y1 *original_size_x)<<2;
+				colors[12]= in_data[addr  ];
+				colors[13]= in_data[addr+1];
+				colors[14]= in_data[addr+2];
+				colors[15]= in_data[addr+3];
+
+				mixed_colors[0]= ( colors[ 0] * dx1 + colors[ 4] * dx );
+				mixed_colors[1]= ( colors[ 1] * dx1 + colors[ 5] * dx );
+				mixed_colors[2]= ( colors[ 2] * dx1 + colors[ 6] * dx );
+				mixed_colors[3]= ( colors[ 3] * dx1 + colors[ 7] * dx );
+				mixed_colors[4]= ( colors[ 8] * dx1 + colors[12] * dx );
+				mixed_colors[5]= ( colors[ 9] * dx1 + colors[13] * dx );
+				mixed_colors[6]= ( colors[10] * dx1 + colors[14] * dx );
+				mixed_colors[7]= ( colors[11] * dx1 + colors[15] * dx );
+				unsigned char* out_color= data + (x + (y<<size_x_log2));
+				out_color[0]= ( mixed_colors[0] * dy1 + mixed_colors[4] * dy ) >> 16;
+				out_color[1]= ( mixed_colors[1] * dy1 + mixed_colors[5] * dy ) >> 16;
+				out_color[2]= ( mixed_colors[2] * dy1 + mixed_colors[6] * dy ) >> 16;
+				out_color[3]= ( mixed_colors[3] * dy1 + mixed_colors[7] * dy ) >> 16;
+				//nearest filter
+				/*((int*)data)[ x + (y<<size_x_log2) ]= 
+				((int*)in_data)[ ((x*x2x_new)>>16) + ((y*y2y_new)>>16) * original_size_x ];*/
+			}
 	}
 	else
 	{//copy per byte

@@ -34,17 +34,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "winquake.h"
 
 
-//#include "../ref_soft_panzer/panzer_rast/rasterization.h"
-
 // Console variables that we need to access from this module
 
 swwstate_t sww_state;
-swwstate_t sww_state_second;//for second window
 
-/*
-** VID_CreateWindow
-*/
-#define	WINDOW_CLASS_NAME "Quake 2"
 
 static HWND console_handle;
 void SWimp_OpenSystemConsole()
@@ -57,6 +50,49 @@ void SWimp_OpenSystemConsole()
 	MoveWindow(console_handle,1,1,680,480,1);
 	printf("[rw_imp.c] Console initialized.\n");
 }
+
+
+static unsigned short old_gamma[256*3];
+void SWimp_SaveOldHWGamma()
+{
+	HDC desktop_hdc = GetDC( GetDesktopWindow() );
+	if( GetDeviceGammaRamp( desktop_hdc, old_gamma ) == FALSE )
+		sw_state.hw_gamma_supported= 0;
+	ReleaseDC( GetDesktopWindow(), desktop_hdc );
+	sw_state.hw_gamma_supported= 1;
+}
+
+void SWimp_SetHWGamma()
+{
+	unsigned short gamma[3][256];
+	int i;
+
+	for( i= 0; i< 256; i++ )
+	{
+		gamma[0][i]=
+		gamma[1][i]=
+		gamma[2][i]= sw_state.gammatable[i]<<8;
+	}
+
+	if( SetDeviceGammaRamp( sww_state.hDC, gamma ) == FALSE )
+		printf( "hw gamma change error!\n" );
+}
+
+void SWimp_RestoreHWGamma()
+{
+	if( sw_state.hw_gamma_supported )
+	{
+		HDC desktop_hdc = GetDC( GetDesktopWindow() );
+		SetDeviceGammaRamp( desktop_hdc, old_gamma );
+		ReleaseDC( GetDesktopWindow(), desktop_hdc );
+	}
+}
+
+
+/*
+** VID_CreateWindow
+*/
+#define	WINDOW_CLASS_NAME "Quake 2"
 
 void VID_CreateWindow( int width, int height, int stylebits, swwstate_t* state )
 {
@@ -243,6 +279,7 @@ void SWimp_EndFrame (void)
 															DDBLTFAST_WAIT );
 			}
 
+
 			if ( ( rval = sww_state.lpddsFrontBuffer->lpVtbl->Flip( sww_state.lpddsFrontBuffer,
 															 NULL, DDFLIP_WAIT ) ) == DDERR_SURFACELOST )
 			{
@@ -339,33 +376,6 @@ rserr_t SWimp_SetMode( int *pwidth, int *pheight, int mode, qboolean fullscreen 
 	sww_state.initializing = true;
 
 	return retval;
-}
-
-/*
-** SWimp_SetPalette
-**
-** System specific palette setting routine.  A NULL palette means
-** to use the existing palette.  The palette is expected to be in
-** a padded 4-byte xRGB format.
-*/
-void SWimp_SetPalette( const unsigned char *palette )
-{
-	// MGL - what the fuck was kendall doing here?!
-	// clear screen to black and change palette
-	//	for (i=0 ; i<vid.height ; i++)
-	//		memset (vid.buffer + i*vid.rowbytes, 0, vid.width);
-
-	if ( !palette )
-		palette = ( const unsigned char * ) sw_state.currentpalette;
-
-	if ( !sw_state.fullscreen )
-	{
-		DIB_SetPalette( ( const unsigned char * ) palette, &sww_state );
-	}
-	else
-	{
-		DDRAW_SetPalette( ( const unsigned char * ) palette );
-	}
 }
 
 /*

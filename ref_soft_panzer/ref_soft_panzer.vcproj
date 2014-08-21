@@ -257,12 +257,14 @@
 				InlineFunctionExpansion="2"
 				EnableIntrinsicFunctions="true"
 				FavorSizeOrSpeed="1"
+				OmitFramePointers="true"
 				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;C_ONLY;_CRT_SECURE_NO_WARNINGS"
 				StringPooling="true"
 				ExceptionHandling="0"
 				RuntimeLibrary="2"
 				BufferSecurityCheck="false"
 				EnableFunctionLevelLinking="true"
+				FloatingPointModel="2"
 				RuntimeTypeInfo="false"
 				PrecompiledHeaderFile=".\ReleaseAXP/ref_soft.pch"
 				AssemblerListingLocation=".\ReleaseAXP/"
@@ -288,6 +290,7 @@
 				OutputFile="C:/Old Games/Q2/QUAKE2/ref_soft.dll"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
+				GenerateManifest="true"
 				ModuleDefinitionFile=".\ref_soft.def"
 				ProgramDatabaseFile=""
 				SubSystem="2"
@@ -829,6 +832,10 @@
 				</File>
 				<File
 					RelativePath=".\panzer_rast\texture.cpp"
+					>
+				</File>
+				<File
+					RelativePath=".\panzer_rast\vertex_processing.cpp"
 					>
 				</File>
 				<Filter

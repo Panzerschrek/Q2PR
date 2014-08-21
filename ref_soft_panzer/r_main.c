@@ -345,6 +345,9 @@ GetRefAPI
 void PANZER_Shutdown(void)
 {
 	extern void PR_ShutdownRendering();
+
+	SWimp_RestoreHWGamma();
+
 	R_UnRegister();
 	PR_ShutdownRendering();
 	PRast_Shutdown();
@@ -369,11 +372,6 @@ struct model_s *PANZER_RegisterModel(char *name)
 	printf( "register model \"%s\"%s\n", name, mod == NULL ? " - failed" : "" );
 	return mod;
 }
-struct image_s *PANZER_RegisterSkin(char *name)
-{
-	//printf( "register skin \"%s\"\n", name );
-	return NULL;
-}
 struct image_s *PANZER_RegisterPic(char *name)
 {
 	image_t	*image;
@@ -387,6 +385,13 @@ struct image_s *PANZER_RegisterPic(char *name)
 	else
 		image = R_FindImage (name+1, it_pic);
 
+	return image;
+}
+struct image_s *PANZER_RegisterSkin(char *name)
+{
+	image_t	*image;
+	image = R_FindImage (name+1, it_skin);
+	//printf( "register skin \"%s\"\n", name );
 	return image;
 }
 
@@ -521,7 +526,15 @@ void PANZER_BeginFrame( float camera_separation )
 	}
 	if( vid_gamma->modified )
 	{
+		//clamp invalid gamma values
+		if( vid_gamma->value < 0.5f )
+			ri.Cvar_Set( "vid_gamma", "0.5" );
+		else if( vid_gamma->value > 1.3f )
+			ri.Cvar_Set( "vid_gamma", "1.3" );
+
 		Draw_BuildGammaTable();
+		if( sw_state.hw_gamma_supported )
+			SWimp_SetHWGamma();
 		vid_gamma->modified= false;
 	}
 }
@@ -543,6 +556,8 @@ void PANZER_AppActivate( qboolean activate )
 qboolean PANZER_Init ( void *hinstance, void *wndproc )
 {
 	extern PR_InitRendering();
+
+	SWimp_SaveOldHWGamma();
 
 	Draw_GetPalette();
 	SWimp_OpenSystemConsole();

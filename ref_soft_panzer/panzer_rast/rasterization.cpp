@@ -896,7 +896,6 @@ static fixed16_t triangle_in_lightmap_tex_coord[ 2 * 3 +2 ];
 
 
 static fixed16_t scanline_z[ 1 + PSR_MAX_SCREEN_WIDTH / PSR_LINE_SEGMENT_SIZE ];
-int triangle_in_divisor_vertex_index= 0;//1 or 2
 /*
 in vertices:
 .....0
@@ -922,8 +921,8 @@ enum DepthTestMode depth_test_mode,
 bool write_depth >
 void DrawTriangleUp()
 {
-    int y_begin= FastIntClampToZero( triangle_in_vertex_xy[3]>>16 );
-    int y_end= FastIntMin( screen_size_y, triangle_in_vertex_xy[1]>>16 );
+    int y_begin= FastIntClampToZero( Fixed16CeilToInt(triangle_in_vertex_xy[3]) );
+    int y_end= FastIntMin( screen_size_y-1, Fixed16FloorToInt(triangle_in_vertex_xy[1]) );
 
     fixed16_t x_left, x_right, dx_left, dx_right;
     fixed16_t color_left[4], d_color_left[4];
@@ -1053,17 +1052,10 @@ void DrawTriangleUp()
         }*/
     }//calculate delta and begin values
 
-    for( int y= y_begin; y< y_end; y++, x_left+= dx_left, x_right+= dx_right )//scan lines
+    for( int y= y_begin; y<= y_end; y++, x_left+= dx_left, x_right+= dx_right )//scan lines
     {
-        int x_begin= FastIntClampToZero( x_left>>16 );
-        int x_end= FastIntMin( screen_size_x, x_right>>16 );
-		if( y == y_begin )
-		{
-			if( triangle_in_divisor_vertex_index != 1 )
-				x_begin= FastIntClampToZero( triangle_in_vertex_xy[2]>>16 );
-			else //if( triangle_in_divisor_vertex_index != 2 )
-				x_end= FastIntMin( screen_size_x, triangle_in_vertex_xy[4]>>16 );
-		}
+        int x_begin= FastIntClampToZero( Fixed16CeilToInt(x_left) );
+        int x_end= FastIntMin( screen_size_x-1, Fixed16FloorToInt(x_right) );
 
         int s= x_begin + screen_size_x * y;
         depth_buffer_t* depth_p= depth_buffer + s;
@@ -1096,7 +1088,7 @@ void DrawTriangleUp()
 
 #ifdef PSR_FAST_PERSECTIVE
         for( int x= x_begin>>PSR_LINE_SEGMENT_SIZE_LOG2, inv_z= line_inv_z - ( x_begin&(PSR_LINE_SEGMENT_SIZE-1) ) * d_line_inv_z;
-                x< ( x_end>>PSR_LINE_SEGMENT_SIZE_LOG2 ) +2;
+                x<= ( x_end>>PSR_LINE_SEGMENT_SIZE_LOG2 ) +2;
                 x++, inv_z+= ( PSR_LINE_SEGMENT_SIZE * d_line_inv_z )  )
         {
             
@@ -1104,7 +1096,7 @@ void DrawTriangleUp()
         }
 #endif
 
-        for( int x= x_begin; x < x_end; x++, pixels+=4, depth_p++ )
+        for( int x= x_begin; x <= x_end; x++, pixels+=4, depth_p++ )
         {
             PSR_ALIGN_4 unsigned char color[4];
 #ifdef PSR_FAST_PERSECTIVE
@@ -1215,6 +1207,9 @@ void DrawTriangleUp()
                         goto next_pixel;
 				if( alpha_test_mode == ALPHA_TEST_DISCARD_LESS_HALF )
 					if( color[3] < 128 )
+						goto next_pixel;
+				if( alpha_test_mode == ALPHA_TEST_DISCARD_GREATER_HALF )
+					if( color[3] >= 128 )
 						goto next_pixel;
             }// if alpha test
 
@@ -1415,8 +1410,8 @@ enum DepthTestMode depth_test_mode,
 bool write_depth >
 void DrawTriangleDown()
 {
-    int y_begin= FastIntClampToZero( triangle_in_vertex_xy[1]>>16 );
-    int y_end= FastIntMin( screen_size_y, triangle_in_vertex_xy[3]>>16 );
+    int y_begin= FastIntClampToZero( Fixed16CeilToInt(triangle_in_vertex_xy[1]) );
+    int y_end= FastIntMin( screen_size_y-1, Fixed16FloorToInt(triangle_in_vertex_xy[3]) );
 
     fixed16_t x_left, x_right, dx_left, dx_right;
     fixed16_t color_left[4], d_color_left[4];
@@ -1545,10 +1540,10 @@ void DrawTriangleDown()
     }//calculate delta and begin values
 
 
-    for( int y= y_begin; y< y_end; y++, x_left+= dx_left, x_right+= dx_right )//scan lines
+    for( int y= y_begin; y<= y_end; y++, x_left+= dx_left, x_right+= dx_right )//scan lines
     {
-        int x_begin= FastIntClampToZero( x_left>>16 );//FastIntMax( 0, x_left>>16 );
-        int x_end= FastIntMin( screen_size_x, x_right>>16 );
+        int x_begin= FastIntClampToZero( Fixed16CeilToInt(x_left) );
+        int x_end= FastIntMin( screen_size_x-1, Fixed16FloorToInt(x_right) );
         int s= x_begin + screen_size_x * y;
         depth_buffer_t* depth_p= depth_buffer + s;
         unsigned char* pixels= screen_buffer + (s<<2);
@@ -1580,14 +1575,14 @@ void DrawTriangleDown()
 
 #ifdef PSR_FAST_PERSECTIVE
         for( int x= x_begin>>PSR_LINE_SEGMENT_SIZE_LOG2, inv_z= line_inv_z - ( x_begin&(PSR_LINE_SEGMENT_SIZE-1) ) * d_line_inv_z;
-                x< ( x_end>>PSR_LINE_SEGMENT_SIZE_LOG2 ) +2;
+                x<= ( x_end>>PSR_LINE_SEGMENT_SIZE_LOG2 ) +2;
                 x++, inv_z+= ( PSR_LINE_SEGMENT_SIZE * d_line_inv_z )  )
         {
             scanline_z[x]= Fixed16Invert(FastIntMax( inv_z>>PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2, 65536/PSR_MIN_ZMIN ) );
         }
 #endif
 
-        for( int x= x_begin; x < x_end; x++, pixels+=4, depth_p++ )
+        for( int x= x_begin; x <= x_end; x++, pixels+=4, depth_p++ )
         {
             PSR_ALIGN_4 unsigned char color[4];
 #ifdef PSR_FAST_PERSECTIVE
@@ -1697,6 +1692,9 @@ void DrawTriangleDown()
                         goto next_pixel;
 				if( alpha_test_mode == ALPHA_TEST_DISCARD_LESS_HALF )
 					if( color[3] < 128 )
+						goto next_pixel;
+				if( alpha_test_mode == ALPHA_TEST_DISCARD_GREATER_HALF )
+					if( color[3] >= 128 )
 						goto next_pixel;
             }// if alpha test
 
@@ -1923,10 +1921,6 @@ void DrawTriangleFromBuffer( char* buff )
     for( int i= 0; i< 3; i++ )
     {
         triangle_in_vertex_xy[i*2]= ((int*)v)[0];
-		if( triangle_in_vertex_xy[i*2] & 0x80000000 )
-			triangle_in_divisor_vertex_index= i;
-		triangle_in_vertex_xy[i*2]<<= 1; triangle_in_vertex_xy[i*2]>>= 1;//sign bit write
-
         triangle_in_vertex_xy[i*2+1]= ((int*)v)[1];
         triangle_in_vertex_z[i]= ((int*)v)[2];
         v+= 3 * sizeof(int);
@@ -2462,9 +2456,12 @@ void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapColoredLinearBlend)(c
 
 
 
+void (*DrawTexturedModelTriangleFromBuffer)( char* buff )= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+
 
 void (*DrawParticleSprite)(int x0, int y0, int x1, int y1, fixed16_t depth)= Draw::DrawSprite
-< TEXTURE_NONE, BLENDING_SRC_ALPHA, ALPHA_TEST_NONE, LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+< TEXTURE_NONE, BLENDING_CONSTANT, ALPHA_TEST_NONE, LIGHTING_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawParticleSpriteNoBlend)(int x0, int y0, int x1, int y1, fixed16_t depth)= Draw::DrawSprite
 < TEXTURE_NONE, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, DEPTH_TEST_LESS, true >;
 

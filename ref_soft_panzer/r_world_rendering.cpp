@@ -133,14 +133,7 @@ triangle_draw_func_t GetWorldNearDrawFunc( bool is_alpha )
 
 triangle_draw_func_t GetWorldFarDrawFunc( bool is_alpha )
 {
-	int tex_mode;
-	if( strcmp( r_texture_mode->string, "texture_linear" ) == 0 )
-		tex_mode= TEXTURE_LINEAR;
-	else if( strcmp( r_texture_mode->string, "texture_fake_filter" ) == 0 )
-		tex_mode= TEXTURE_FAKE_FILTER;
-	else
-		tex_mode= TEXTURE_NEAREST;
-	return GetWorldDrawFunc( tex_mode, is_alpha );
+	return GetWorldDrawFunc( TEXTURE_NEAREST, is_alpha );
 }
 
 void InitTextureSurfacesChain()
@@ -215,10 +208,10 @@ int DrawWorldSurface( msurface_t* surf, triangle_draw_func_t near_draw_func, tri
 	command_buffer.current_pos += 
 	ComIn_SetTextureLod( command_buffer.current_pos + (char*)command_buffer.buffer, tex, mip_level );
 
-	unsigned char ccolor[4];
+	/*unsigned char ccolor[4];
 	*((int*)ccolor)= d_8to24table[ (surf - r_worldmodel->surfaces)&255 ];
 	command_buffer.current_pos += 
-	ComIn_SetConstantColor( command_buffer.current_pos + (char*)command_buffer.buffer, ccolor );
+	ComIn_SetConstantColor( command_buffer.current_pos + (char*)command_buffer.buffer, ccolor );*/
 
 	char* buff= (char*) command_buffer.buffer;
 	buff+= command_buffer.current_pos;
@@ -227,7 +220,7 @@ int DrawWorldSurface( msurface_t* surf, triangle_draw_func_t near_draw_func, tri
 	((int*)buff)[0]= COMMAND_DRAW_TRIANGLE;
 	buff+=sizeof(int);
 	DrawTriangleCall* call= (DrawTriangleCall*)buff;
-	call->DrawFromBufferFunc= near_draw_func;
+	call->DrawFromBufferFunc= mip_level == 0 ? near_draw_func : far_draw_func;
 	call->triangle_count= 0;
 	call->vertex_size= sizeof(int)*3 + sizeof(int)*2 + sizeof(int)*2;
 	buff+= sizeof(DrawTriangleCall);
@@ -341,7 +334,8 @@ void DrawWorldTextureChains()
 		tex_coord_shift= 0;
 
 
-	triangle_draw_func_t  draw_func = GetWorldNearDrawFunc(false);
+	triangle_draw_func_t  near_draw_func= GetWorldNearDrawFunc(false);
+	triangle_draw_func_t  far_draw_func= GetWorldFarDrawFunc(false);
 
 	int triangle_count= 0, face_count= 0;
 	for( int i= 0; i< MAX_RIMAGES; i++ )
@@ -375,7 +369,7 @@ void DrawWorldTextureChains()
 				fr--;
 			}
 
-			int cur_triangles= DrawWorldSurface(surf, draw_func, draw_func, texinfo, tex_coord_shift );
+			int cur_triangles= DrawWorldSurface(surf, near_draw_func, far_draw_func, texinfo, tex_coord_shift );
 			triangle_count+= cur_triangles;
 			command_buffer.current_pos+= sizeof(int) + sizeof(DrawTriangleCall) + cur_triangles * 4 * sizeof(int)*7;
 

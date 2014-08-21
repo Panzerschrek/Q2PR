@@ -12,6 +12,14 @@ namespace VertexProcessing
 {
 
 
+
+float width_f; //screen width * 65536
+float height_f;
+float width2_f; //screen width /2 * 65536
+float height2_f;
+
+
+
 /*universal vertex format ( with all attributes )
 real vertex structures can has some of these
 */
@@ -145,7 +153,7 @@ int DrawTriangleToBuffer( char* buff )//returns 0, if no output triangles
 
     char* v= buff;
     //write lower vertex attributes
-    ((int*)v)[0]= triangle_in_vertex_xy[ vertex_indeces_from_upper[2]<<1 ] &0x7FFFFFFF;//zero divisor vertex flag
+    ((int*)v)[0]= triangle_in_vertex_xy[ vertex_indeces_from_upper[2]<<1 ];
     ((int*)v)[1]= triangle_in_vertex_xy[ (vertex_indeces_from_upper[2]<<1)+1 ];
     ((int*)v)[2]= triangle_in_vertex_z[ vertex_indeces_from_upper[2] ];
     v+= 3 * sizeof(int);
@@ -179,7 +187,7 @@ int DrawTriangleToBuffer( char* buff )//returns 0, if no output triangles
 
         //write interpolated vertex
         fixed16_t final_z;
-        ((int*)v)[0]= up_down_line_x | 0x80000000;//WIRTE TO BIT 31 DIVISOR VERTEX FLAG
+        ((int*)v)[0]= up_down_line_x;
         ((int*)v)[1]= triangle_in_vertex_xy[ (vertex_indeces_from_upper[1]<<1)+1 ];//y - from middle vertex
         ((int*)v)[2]= Fixed16Invert
                       ( Fixed16Mul( triangle_in_vertex_inv_z[ vertex_indeces_from_upper[0] ], k1 ) +
@@ -237,7 +245,7 @@ int DrawTriangleToBuffer( char* buff )//returns 0, if no output triangles
             v-= 2*vertex_size;
 
         //write middle vertex
-        ((int*)v)[0]= triangle_in_vertex_xy[ vertex_indeces_from_upper[1]<<1 ] &0x7FFFFFFF;//zero divisor vertex flag
+        ((int*)v)[0]= triangle_in_vertex_xy[ vertex_indeces_from_upper[1]<<1 ];
         ((int*)v)[1]= triangle_in_vertex_xy[ (vertex_indeces_from_upper[1]<<1)+1 ];
         ((int*)v)[2]= triangle_in_vertex_z[ vertex_indeces_from_upper[1] ];
         v+= 3 * sizeof(int);
@@ -269,7 +277,7 @@ int DrawTriangleToBuffer( char* buff )//returns 0, if no output triangles
 
 
     //write upper vertex attributes
-    ((int*)v)[0]= triangle_in_vertex_xy[ vertex_indeces_from_upper[0]<<1 ] &0x7FFFFFFF;//zero divisor vertex flag
+    ((int*)v)[0]= triangle_in_vertex_xy[ vertex_indeces_from_upper[0]<<1 ];
     ((int*)v)[1]= triangle_in_vertex_xy[ (vertex_indeces_from_upper[0]<<1)+1 ];
     ((int*)v)[2]= triangle_in_vertex_z[ vertex_indeces_from_upper[0] ];
     v+= 3 * sizeof(int);
@@ -393,6 +401,76 @@ int CullTriangleByZNearPlane( float z0, float z1, float z2 )
 }
 
 
+//member order in vertex attrib:
+
+struct WorldVertexAttrib
+{
+	fixed16_t tc[4];
+};
+
+
+int DrawClipWorldTriangleToBuffer( 
+const float* v,//9 floats
+WorldVertexAttrib* attribs )//3 * int_attribs
+{
+
+	float tmp_v[3*4];
+	WorldVertexAttrib tmp_attrib[4];
+	int vertices= CullTriangleByZNearPlane( v[2], v[5], v[8] );
+	if( vertices == 0 )
+		return 0;
+	else if( vertices == 3 )
+	{
+	}
+	else if( vertices == 2 )
+	{
+		float inv_interpolation_k= 1.0f - cull_new_vertices_interpolation_k[0];
+
+		float interp;
+		const float inv_zmin= 1.0f / PSR_MIN_ZMIN_FLOAT;
+		interp= v[ cull_passed_vertices[0]*3 ] * cull_new_vertices_interpolation_k[0] + 
+				v[ cull_lost_vertices[0]*3 ] * inv_interpolation_k;
+		tmp_v[0]=  ( inv_zmin * interp + 1.0f ) * width2_f;//interpolate x0
+		interp= v[ cull_passed_vertices[0]*3+1 ] * cull_new_vertices_interpolation_k[0] + 
+				v[ cull_lost_vertices[0]*3+1 ] * inv_interpolation_k;
+		tmp_v[1]=  ( inv_zmin * interp + 1.0f ) * height2_f;//interpolate y0
+
+		interp= v[ cull_passed_vertices[0]*3 ] * cull_new_vertices_interpolation_k[0] + 
+				v[ cull_lost_vertices[1]*3 ] * inv_interpolation_k;
+		tmp_v[3]=  ( inv_zmin * interp + 1.0f ) * width2_f;//interpolate x1
+		interp= v[ cull_passed_vertices[0]*3+1 ] * cull_new_vertices_interpolation_k[0] + 
+				v[ cull_lost_vertices[1]*3+1 ] * inv_interpolation_k;
+		tmp_v[4]=  ( inv_zmin * interp + 1.0f ) * height2_f;//interpolate y1
+
+		tmp_v[2]= tmp_v[5]= PSR_MIN_ZMIN_FLOAT;
+
+		int unmodifed_vertex_k= cull_passed_vertices[0]*3;
+		float inv_interp_z= 1.0f / v [unmodifed_vertex_k+2];
+		tmp_v[6]= (v[unmodifed_vertex_k*3] * inv_interp_z +1.0f) * width2_f; 
+		tmp_v[7]= (v[unmodifed_vertex_k+1] * inv_interp_z +1.0f) * height2_f; 
+		tmp_v[8]=  v[unmodifed_vertex_k+2]; 
+
+		for( int i= 0; i< 4; i++ )
+		{
+			interp= float(attribs[ cull_passed_vertices[0] ].tc[i]) * cull_new_vertices_interpolation_k[0] + 
+					float(attribs[ cull_lost_vertices[0] ].tc[i]) * inv_interpolation_k;
+			tmp_attrib[0].tc[i]= fixed16_t(interp);
+			interp= float(attribs[ cull_passed_vertices[0] ].tc[i]) * cull_new_vertices_interpolation_k[0] + 
+					float(attribs[ cull_lost_vertices[1] ].tc[i]) * inv_interpolation_k;
+			tmp_attrib[1].tc[i]= fixed16_t(interp);
+
+			tmp_attrib[2].tc[i]= attribs[cull_passed_vertices[0]].tc[i];
+		}
+
+	}//if culled 2 vertices by nearZ plane
+	else//if(vertices == 1 )
+	{
+	}
+
+	return 3;
+}
+
+
 void DrawSpriteToBuffer( char* buff, int x0, int y0, int x1, int y1, fixed16_t depth )
 {
 	int* b= (int*)buff;
@@ -419,6 +497,9 @@ int (*DrawWorldTriangleToBuffer)(char* buff)= VertexProcessing::DrawTriangleToBu
 < COLOR_FROM_TEXTURE, TEXTURE_NEAREST, LIGHTING_FROM_LIGHTMAP, ADDITIONAL_EFFECT_NONE >;
 int (*DrawSkyTriangleToBuffer)( char* buff )= VertexProcessing::DrawTriangleToBuffer
 <COLOR_FROM_TEXTURE, TEXTURE_NEAREST, LIGHTING_NONE, ADDITIONAL_EFFECT_NONE>;
+
+int (*DrawTexturedModelTriangleToBuffer)(char*buff)= VertexProcessing::DrawTriangleToBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, LIGHTING_NONE, ADDITIONAL_EFFECT_NONE >;
 
 
 void (*DrawParticleSpriteToBuffer)( char* buff, int x0, int y0, int x1, int y1, fixed16_t depth )= VertexProcessing::DrawSpriteToBuffer;

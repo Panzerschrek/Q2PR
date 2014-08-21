@@ -80,6 +80,14 @@ fps_calc_t fps_calc;
 void CalculateAndShowFPS();
 
 
+
+/*
+-----------particles------------
+*/
+Texture particle_texture;
+image_t particle_image;
+void InitParticles();
+
 /*
 -----------matrices and vectors------------
 */
@@ -181,6 +189,8 @@ extern "C" void PR_InitRendering()
 
 	command_buffer.current_pos= 
 		back_command_buffer.current_pos= 0;
+
+	InitParticles();
 }
 extern "C" void PR_ShutdownRendering()
 {
@@ -238,7 +248,7 @@ extern "C" void PR_SwapCommandBuffers()
 				(char*)command_buffer.buffer + command_buffer.current_pos );*/
 
 	//gamma correction
-	if( vid_gamma->value < 0.95f || vid_gamma->value > 1.05f )
+	if( ( vid_gamma->value < 0.95f || vid_gamma->value > 1.05f ) && !sw_state.hw_gamma_supported )
 	{
 		command_buffer.current_pos+= ComIn_GammaCorrectColorBuffer( 
 			(char*)command_buffer.buffer + command_buffer.current_pos, sw_state.gammatable );
@@ -395,7 +405,6 @@ extern "C" void PANZER_DrawFadeScreen()
 	call->func= FadeScreen;
 
 	command_buffer.current_pos+= sizeof(int) + sizeof(DrawFadeScreenCall);
-
 }
 
 extern "C" void PANZER_DrawChar(int x, int y, int c)
@@ -704,6 +713,13 @@ void DrawSkyBox( const m_Mat4* mat )
 }
 
 
+void InitParticles()
+{
+	LoadTGA( "pics/particle.tga", particle_image.pixels, &particle_image.width, &particle_image.height );
+	particle_texture.Create( particle_image.width, particle_image.height, false, NULL, particle_image.pixels[0] );
+}
+
+
 void DrawParticles( const m_Mat4* mat, particle_t* particles, int count, float fov_rad )
 {
 	int call_size = 
@@ -720,6 +736,11 @@ void DrawParticles( const m_Mat4* mat, particle_t* particles, int count, float f
 	float height2= float(vid.height)*0.5f;
 	unsigned char color[4];
 	float init_sprite_radius = float(vid.width)/( sin(fov_rad*0.5f) * 256.0f );
+
+	/*command_buffer.current_pos+=
+		ComIn_SetTexture( (char*)command_buffer.buffer + command_buffer.current_pos,
+		&particle_texture );
+	*/
 
 	for( int i= 0; i< count; i++ )
 	{
@@ -756,12 +777,11 @@ void DrawParticles( const m_Mat4* mat, particle_t* particles, int count, float f
 		command_buffer.current_pos+= sizeof(DrawSpriteCall);
 		buff+= sizeof(DrawSpriteCall);
 
-		int sprite_radius = int(init_sprite_radius * inv_z);
-		if(sprite_radius<1)
-			sprite_radius= 1;
+		float sprite_radius = init_sprite_radius * inv_z;
+		if(sprite_radius<0.51f) sprite_radius= 0.51f;
 		DrawParticleSpriteToBuffer( buff,
-			int(pos.x)-sprite_radius, int(pos.y)-sprite_radius,
-			int(pos.x)+sprite_radius, int(pos.y)+sprite_radius,
+			int(pos.x-sprite_radius), int(pos.y-sprite_radius),
+			int(pos.x+sprite_radius), int(pos.y+sprite_radius),
 			fixed16_t(pos.z*65536.0f) );
 		command_buffer.current_pos+= sizeof(int)*5;
 	}

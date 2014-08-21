@@ -16,6 +16,15 @@ inline fixed16_t Fixed16Ceil( fixed16_t x )
 	return x + ((-x)&0xFFFF);
 }
 
+inline int Fixed16FloorToInt( fixed16_t x )
+{
+	return x>>16;
+}
+inline int Fixed16CeilToInt( fixed16_t x )
+{
+	return (x + ((-x)&0xFFFF))>>16;
+}
+
 inline fixed16_t Fixed16Mul( fixed16_t a, fixed16_t b )
 {
 #ifdef PSR_MASM32

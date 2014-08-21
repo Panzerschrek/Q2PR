@@ -96,8 +96,16 @@ extern "C" image_t	*R_FindImage (char *name, imagetype_t type)
 		img->registration_sequence = registration_sequence;
 		strcpy( img->name, name );
 		img->type= type;
-		need_resize_to_pot= false;
-		need_convert_to_rgba= true;
+		if( type == it_skin )
+		{
+			need_resize_to_pot= true;
+			need_convert_to_rgba= true;
+		}
+		else
+		{
+			need_resize_to_pot= false;
+			need_convert_to_rgba= true;
+		}
 	}
 	else if( !strcmp(name+len-4, ".wal") )
 	{
