@@ -50,9 +50,13 @@ void ColorCorrectLights( int num_lights )
 		{
 			float s= ( l->color[0] + l->color[1] + l->color[2] ) * 0.333333f;
 			s*= inv_sat;
-			l->color[0]= l->color[0] * sat + s;
-			l->color[1]= l->color[1] * sat + s;
-			l->color[2]= l->color[2] * sat + s;
+			float tmp_color[3]={
+				l->color[0] * sat + s,
+				l->color[1] * sat + s,
+				l->color[2] * sat + s };
+			l->color[0]= tmp_color[0];
+			l->color[1]= tmp_color[1];
+			l->color[2]= tmp_color[2];
 
 			ColorFloatSwap( l->color );
 		}
@@ -235,8 +239,7 @@ unsigned char* L_GetSurfaceDynamicLightmap( msurface_t* surf )
 		else
 			GenerateLightmapLinear( lightmap, surf, cur_sample );
 
-		float surf_scale= 0.0625f / sqrt( DotProduct( surf->texinfo->vecs[0], surf->texinfo->vecs[0] ) );
-
+		float surf_scale= sqrtf( DotProduct( surf->texinfo->vecs[0], surf->texinfo->vecs[0] ) );
 		for( int i= 0; i< r_newrefdef.num_dlights; i++ )
 		{
 			if( (surf->dlightbits&(1<<i)) == 0 )
@@ -252,17 +255,17 @@ unsigned char* L_GetSurfaceDynamicLightmap( msurface_t* surf )
 			dst_to_plane+= 1.0f;//hack, for lights on plane ( like blaster decals )
 
 			float transformed_pos[3];//light position in plane space
-			transformed_pos[0]= surf_scale * ( DotProduct( light->origin, surf->texinfo->vecs[0]) + surf->texinfo->vecs[0][3] - surf->texturemins[0] );
-			transformed_pos[1]= surf_scale * ( DotProduct( light->origin, surf->texinfo->vecs[1]) + surf->texinfo->vecs[1][3] - surf->texturemins[1] );
-			transformed_pos[2]= surf_scale * dst_to_plane;
+			transformed_pos[0]= 0.0625f * ( DotProduct( light->origin, surf->texinfo->vecs[0]) + surf->texinfo->vecs[0][3] - surf->texturemins[0] );
+			transformed_pos[1]= 0.0625f * ( DotProduct( light->origin, surf->texinfo->vecs[1]) + surf->texinfo->vecs[1][3] - surf->texturemins[1] );
+			transformed_pos[2]= 0.0625f * dst_to_plane;
 
 			for( int y= 0; y< size_y; y++ )
 				for( int x= 0; x< size_x; x++ )
 				{
 					float texel_pos[]= { x - transformed_pos[0], y - transformed_pos[1] };
 					float dst2= (texel_pos[0]*texel_pos[0] + texel_pos[1]*texel_pos[1] + transformed_pos[2]*transformed_pos[2]);
-					float cos_dot= transformed_pos[2] / sqrt(dst2);
-					float intensity= cos_dot * (light_scaler * 256.0f) * fabs(light->intensity) / dst2;
+					float cos_dot= transformed_pos[2] / sqrtf(dst2);
+					float intensity= surf_scale * cos_dot * (light_scaler * 256.0f) * fabs(light->intensity) / dst2;
 					if( intensity > 1.0f )
 					{
 						if(intensity>max_light )
