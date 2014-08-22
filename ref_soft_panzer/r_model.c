@@ -329,12 +329,10 @@ void Mod_LoadLighting (lump_t *l)
 		in = (void *)(mod_base + l->fileofs);
 		for (i=0 ; i<size ; i+=4, in+=3)
 		{
-			/*loadmodel->lightdata[i  ]= in[0];
+			loadmodel->lightdata[i  ]= in[0];
 			loadmodel->lightdata[i+1]= in[1];
-			loadmodel->lightdata[i+2]= in[2];*/
-			loadmodel->lightdata[i  ]= in[2];
-			loadmodel->lightdata[i+1]= in[1];
-			loadmodel->lightdata[i+2]= in[0];
+			loadmodel->lightdata[i+2]= in[2];
+			ColorByteSwap(loadmodel->lightdata + i );
 
 			SaturationCorrection( loadmodel->lightdata+i, sat, inv_sat );
 			max_component= loadmodel->lightdata[i];
@@ -361,12 +359,11 @@ void Mod_LoadLighting (lump_t *l)
 		in = (void *)(mod_base + l->fileofs);
 		for (i=0 ; i<size ; i+=4, in+=3)
 		{
-			/*loadmodel->lightdata[i  ]= in[0];
+			loadmodel->lightdata[i  ]= in[0];
 			loadmodel->lightdata[i+1]= in[1];
-			loadmodel->lightdata[i+2]= in[2];*/
-			loadmodel->lightdata[i  ]= in[2];
-			loadmodel->lightdata[i+1]= in[1];
-			loadmodel->lightdata[i+2]= in[0];
+			loadmodel->lightdata[i+2]= in[2];
+			loadmodel->lightdata[i+3]= 0;//set to zero, to indicate colored ( not rgbs ) format
+			ColorByteSwap(loadmodel->lightdata + i );
 			SaturationCorrection( loadmodel->lightdata+i, sat, inv_sat );
 		}
 	}

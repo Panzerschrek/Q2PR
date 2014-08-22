@@ -34,6 +34,7 @@ enum LightingMode
 	LIGHTING_NONE,
 	LIGHTING_CONSTANT,
 	LIGHTING_PER_VERTEX,
+	LIGHTING_PER_VERTEX_COLORED,//light = vertex_color * 2
 	LIGHTING_FROM_LIGHTMAP,
 	LIGHTING_FROM_LIGHTMAP_OVERBRIGHT,// light= lightmap_light * constant_light
 	LIGHTING_FROM_LIGHTMAP_OVERBRIGHT2// light= lightmap_light * 2

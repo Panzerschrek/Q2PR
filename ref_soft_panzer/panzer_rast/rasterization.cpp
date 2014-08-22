@@ -961,7 +961,7 @@ void DrawTriangleUp()
 				color_left[i]= (triangle_in_color[i+4]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[1];
                 d_color_left[i]= Fixed16Div( (triangle_in_color[i]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[0] - color_left[i], dy );
                 d_line_color[i]= Fixed16Div( (triangle_in_color[i+8]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[2] - color_left[i], dx );
-                color_left[i]+= Fixed16Mul( ddy, color_left[i] );
+                color_left[i]+= Fixed16Mul( ddy, d_color_left[i] );
             }
         }
         else if( color_mode == COLOR_FROM_TEXTURE )
@@ -982,6 +982,16 @@ void DrawTriangleUp()
             light_left+= Fixed16Mul( ddy, d_light_left );
 
         }
+		else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
+		{
+			 for( int i= 0; i< 3; i++ )
+            {
+				color_left[i]= (triangle_in_color[i+4]) * inv_vertex_z[1];
+                d_color_left[i]= Fixed16Div( triangle_in_color[i] * inv_vertex_z[0] - color_left[i], dy );
+                d_line_color[i]= Fixed16Div( triangle_in_color[i+8] * inv_vertex_z[2] - color_left[i], dx );
+                color_left[i]+= Fixed16Mul( ddy, d_color_left[i] );
+            }
+		}
         else if( lighting_mode == LIGHTING_FROM_LIGHTMAP || lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
         {
             for( int i= 0; i< 2; i++ )
@@ -1076,6 +1086,11 @@ void DrawTriangleUp()
         }
         if( lighting_mode == LIGHTING_PER_VERTEX )
             line_light= light_left + Fixed16Mul( ddx, d_line_light );
+		else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
+		{
+			for( int i= 0; i< 3; i++ )
+                line_color[i]= color_left[i] + Fixed16Mul( ddx, d_line_color[i] );
+		}
         else if( lighting_mode == LIGHTING_FROM_LIGHTMAP || lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
         {
             for( int i= 2; i< 4; i++ )
@@ -1227,6 +1242,16 @@ void DrawTriangleUp()
                 color[1]= FastIntUByteMulClamp255( final_light, color[1] );
                 color[2]= FastIntUByteMulClamp255( final_light, color[2] );
             }
+			else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
+            {
+				int final_light[3];
+				final_light[0]= 3*Fixed16MulResultToInt( line_color[0], final_z );
+				final_light[1]= 3*Fixed16MulResultToInt( line_color[1], final_z );
+				final_light[2]= 3*Fixed16MulResultToInt( line_color[2], final_z );
+                color[0]= FastIntUByteMulClamp255( final_light[0], color[0] );
+                color[1]= FastIntUByteMulClamp255( final_light[1], color[1] );
+                color[2]= FastIntUByteMulClamp255( final_light[2], color[2] );
+            }
             else if( lighting_mode == LIGHTING_FROM_LIGHTMAP )
             {
 				if( lightmap_mode == LIGHTMAP_NEAREST )
@@ -1336,6 +1361,12 @@ next_pixel:
             }
             if( lighting_mode == LIGHTING_PER_VERTEX )
                 line_light+= d_line_light;
+			else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
+			{
+				line_color[0]+= d_line_color[0];
+                line_color[1]+= d_line_color[1];
+                line_color[2]+= d_line_color[2];
+			}
             else if( lighting_mode == LIGHTING_FROM_LIGHTMAP || lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
             {
                 line_tc[2]+= d_line_tc[2];
@@ -1364,6 +1395,12 @@ next_pixel:
         }
         if( lighting_mode == LIGHTING_PER_VERTEX )
             light_left+= d_light_left;
+		else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
+		{
+			color_left[0]+= d_color_left[0];
+            color_left[1]+= d_color_left[1];
+            color_left[2]+= d_color_left[2];
+		}
         else if( lighting_mode == LIGHTING_FROM_LIGHTMAP || lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
         {
             tc_left[2]+= d_tc_left[2];
@@ -1449,7 +1486,7 @@ void DrawTriangleDown()
 				color_left[i]= (triangle_in_color[i]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[0];
                 d_color_left[i]= Fixed16Div( (triangle_in_color[i+4]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[1] - color_left[i], dy );
                 d_line_color[i]= Fixed16Div( (triangle_in_color[i+8]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[2] - (triangle_in_color[i+4]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[1], dx );
-                color_left[i]+= Fixed16Mul( ddy, color_left[i] );
+                color_left[i]+= Fixed16Mul( ddy, d_color_left[i] );
             }
         }
         else if( color_mode == COLOR_FROM_TEXTURE )
@@ -1469,6 +1506,16 @@ void DrawTriangleDown()
             light_left+= Fixed16Mul( ddy, d_light_left );
             d_line_light= Fixed16Div( triangle_in_light[2] * inv_vertex_z[2] - triangle_in_light[1] * inv_vertex_z[1], dx );
         }
+		else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
+		{
+			for( int i= 0; i< 3; i++ )
+            {
+				color_left[i]= triangle_in_color[i] * inv_vertex_z[0];
+                d_color_left[i]= Fixed16Div( triangle_in_color[i+4] * inv_vertex_z[1] - color_left[i], dy );
+                d_line_color[i]= Fixed16Div( triangle_in_color[i+8] * inv_vertex_z[2] - triangle_in_color[i+4] * inv_vertex_z[1], dx );
+                color_left[i]+= Fixed16Mul( ddy, d_color_left[i] );
+            }
+		}
         else if( lighting_mode == LIGHTING_FROM_LIGHTMAP || lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
         {
             for( int i= 0; i< 2; i++ )
@@ -1563,6 +1610,11 @@ void DrawTriangleDown()
         }
         if( lighting_mode == LIGHTING_PER_VERTEX )
             line_light= light_left + Fixed16Mul( ddx, d_line_light );
+		else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
+		{
+			for( int i= 0; i< 3; i++ )
+                line_color[i]= color_left[i] + Fixed16Mul( ddx, d_line_color[i] );
+		}
         else if( lighting_mode == LIGHTING_FROM_LIGHTMAP || lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
         {
             for( int i= 2; i< 4; i++ )
@@ -1712,6 +1764,16 @@ void DrawTriangleDown()
                 color[1]= FastIntUByteMulClamp255( final_light, color[1] );
                 color[2]= FastIntUByteMulClamp255( final_light, color[2] );
             }
+			else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
+            {
+				int final_light[3];
+				final_light[0]= 3*Fixed16MulResultToInt( line_color[0], final_z );
+				final_light[1]= 3*Fixed16MulResultToInt( line_color[1], final_z );
+				final_light[2]= 3*Fixed16MulResultToInt( line_color[2], final_z );
+                color[0]= FastIntUByteMulClamp255( final_light[0], color[0] );
+                color[1]= FastIntUByteMulClamp255( final_light[1], color[1] );
+                color[2]= FastIntUByteMulClamp255( final_light[2], color[2] );
+            }
             else if( lighting_mode == LIGHTING_FROM_LIGHTMAP )
             {
 				if( lightmap_mode == LIGHTMAP_NEAREST )
@@ -1821,6 +1883,12 @@ next_pixel:
             }
             if( lighting_mode == LIGHTING_PER_VERTEX )
                 line_light+= d_line_light;
+			else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
+			{
+				line_color[0]+= d_line_color[0];
+                line_color[1]+= d_line_color[1];
+                line_color[2]+= d_line_color[2];
+			}
             else if( lighting_mode == LIGHTING_FROM_LIGHTMAP || lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
             {
                 line_tc[2]+= d_line_tc[2];
@@ -1849,6 +1917,12 @@ next_pixel:
         }
         if( lighting_mode == LIGHTING_PER_VERTEX )
             light_left+= d_light_left;
+		else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
+		{
+			color_left[0]+= d_color_left[0];
+            color_left[1]+= d_color_left[1];
+            color_left[2]+= d_color_left[2];
+		}
         else if( lighting_mode == LIGHTING_FROM_LIGHTMAP || lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
         {
             tc_left[2]+= d_tc_left[2];
@@ -1924,12 +1998,12 @@ void DrawTriangleFromBuffer( char* buff )
         triangle_in_vertex_xy[i*2+1]= ((int*)v)[1];
         triangle_in_vertex_z[i]= ((int*)v)[2];
         v+= 3 * sizeof(int);
-        if( color_mode == COLOR_PER_VERTEX )
+        if( color_mode == COLOR_PER_VERTEX || lighting_mode == LIGHTING_PER_VERTEX_COLORED )
         {
             Byte4Copy( triangle_in_color + (i<<2), v );
             v+= 4;
         }
-        else if( color_mode == COLOR_FROM_TEXTURE )
+        if( color_mode == COLOR_FROM_TEXTURE )
         {
             triangle_in_tex_coord[i*2+0]= ((int*)v)[0];
             triangle_in_tex_coord[i*2+1]= ((int*)v)[1];
@@ -1972,12 +2046,12 @@ void DrawTriangleFromBuffer( char* buff )
     triangle_in_vertex_xy[1]= ((int*)v)[1];
     triangle_in_vertex_z[0]= ((int*)v)[2];
     v+= 3 * sizeof(int);
-    if( color_mode == COLOR_PER_VERTEX )
+    if( color_mode == COLOR_PER_VERTEX || lighting_mode == LIGHTING_PER_VERTEX_COLORED )
     {
         Byte4Copy( triangle_in_color, v );
         v+= 4;
     }
-    else if( color_mode == COLOR_FROM_TEXTURE )
+    if( color_mode == COLOR_FROM_TEXTURE )
     {
         triangle_in_tex_coord[0]= ((int*)v)[0];
         triangle_in_tex_coord[1]= ((int*)v)[1];
@@ -2476,7 +2550,7 @@ void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapColoredLinearBlend)(c
 
 
 void (*DrawTexturedModelTriangleFromBuffer)( char* buff )= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_PER_VERTEX, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_PER_VERTEX_COLORED, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 
 
 void (*DrawParticleSprite)(int x0, int y0, int x1, int y1, fixed16_t depth)= Draw::DrawSprite

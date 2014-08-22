@@ -86,7 +86,8 @@ int DrawTriangleToBuffer( char* buff )//returns 0, if no output triangles
     const int vertex_size= sizeof(int)*3 + ( (color_mode==COLOR_PER_VERTEX)? 4 : 0 ) +
                            ( (texture_mode==TEXTURE_NONE)? 0 : 2*sizeof(int) ) + 
 						   ( (lighting_mode==LIGHTING_FROM_LIGHTMAP)? 2*sizeof(int) : 0 ) +
-                           ( (lighting_mode==LIGHTING_PER_VERTEX)? sizeof(int) : 0 );
+                           ( (lighting_mode==LIGHTING_PER_VERTEX)? sizeof(int) : 0 ) +
+						   ( (lighting_mode==LIGHTING_PER_VERTEX_COLORED) ? 4 : 0 );
 
 
    // if( triangle_in_vertex_xy[1] == triangle_in_vertex_xy[3] && triangle_in_vertex_xy[1] == triangle_in_vertex_xy[5] )
@@ -157,7 +158,7 @@ int DrawTriangleToBuffer( char* buff )//returns 0, if no output triangles
     ((int*)v)[1]= triangle_in_vertex_xy[ (vertex_indeces_from_upper[2]<<1)+1 ];
     ((int*)v)[2]= triangle_in_vertex_z[ vertex_indeces_from_upper[2] ];
     v+= 3 * sizeof(int);
-    if( color_mode == COLOR_PER_VERTEX )
+    if( color_mode == COLOR_PER_VERTEX || lighting_mode == LIGHTING_PER_VERTEX_COLORED )
     {
         Byte4Copy( v, triangle_in_color + (vertex_indeces_from_upper[2]<<2) );
         v+=4;
@@ -195,7 +196,7 @@ int DrawTriangleToBuffer( char* buff )//returns 0, if no output triangles
 						
         final_z= ((int*)v)[2];
         v+= 3 * sizeof(int);
-        if( color_mode == COLOR_PER_VERTEX )
+        if( color_mode == COLOR_PER_VERTEX || lighting_mode == LIGHTING_PER_VERTEX_COLORED )
         {
 			fixed16_t inv_z0= triangle_in_vertex_inv_z[ vertex_indeces_from_upper[0] ];
             fixed16_t inv_z2= triangle_in_vertex_inv_z[ vertex_indeces_from_upper[2] ];
@@ -249,7 +250,7 @@ int DrawTriangleToBuffer( char* buff )//returns 0, if no output triangles
         ((int*)v)[1]= triangle_in_vertex_xy[ (vertex_indeces_from_upper[1]<<1)+1 ];
         ((int*)v)[2]= triangle_in_vertex_z[ vertex_indeces_from_upper[1] ];
         v+= 3 * sizeof(int);
-        if( color_mode == COLOR_PER_VERTEX )
+        if( color_mode == COLOR_PER_VERTEX || lighting_mode == LIGHTING_PER_VERTEX_COLORED )
         {
             Byte4Copy( v, triangle_in_color + (vertex_indeces_from_upper[1]<<2) );
             v+=4;
@@ -281,7 +282,7 @@ int DrawTriangleToBuffer( char* buff )//returns 0, if no output triangles
     ((int*)v)[1]= triangle_in_vertex_xy[ (vertex_indeces_from_upper[0]<<1)+1 ];
     ((int*)v)[2]= triangle_in_vertex_z[ vertex_indeces_from_upper[0] ];
     v+= 3 * sizeof(int);
-    if( color_mode == COLOR_PER_VERTEX )
+    if( color_mode == COLOR_PER_VERTEX || lighting_mode == LIGHTING_PER_VERTEX_COLORED )
     {
         Byte4Copy( v, triangle_in_color + (vertex_indeces_from_upper[0]<<2) );
         v+=4;
@@ -499,7 +500,7 @@ int (*DrawSkyTriangleToBuffer)( char* buff )= VertexProcessing::DrawTriangleToBu
 <COLOR_FROM_TEXTURE, TEXTURE_NEAREST, LIGHTING_NONE, ADDITIONAL_EFFECT_NONE>;
 
 int (*DrawTexturedModelTriangleToBuffer)(char*buff)= VertexProcessing::DrawTriangleToBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, LIGHTING_PER_VERTEX, ADDITIONAL_EFFECT_NONE >;
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, LIGHTING_PER_VERTEX_COLORED, ADDITIONAL_EFFECT_NONE >;
 
 
 void (*DrawParticleSpriteToBuffer)( char* buff, int x0, int y0, int x1, int y1, fixed16_t depth )= VertexProcessing::DrawSpriteToBuffer;

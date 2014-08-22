@@ -12,6 +12,7 @@ void R_PushDlights (model_t *model);
 unsigned char* L_GetSurfaceDynamicLightmap( msurface_t* surf );
 void R_LightInit();
 void R_SwapLightmapBuffers();
+void R_LightPoint (vec3_t p, vec3_t color);//returns ambient lighting
 
 #ifdef __cplusplus
 //extern "C"

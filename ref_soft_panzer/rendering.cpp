@@ -846,6 +846,17 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 	r_newrefdef= *fd;
 	r_framecount++;
 
+	/*if( r_newrefdef.num_dlights < 32 )
+	{
+		dlight_t* light= r_newrefdef.dlights + r_newrefdef.num_dlights;
+		VectorCopy( fd->vieworg, light->origin );
+		light->intensity= 768.0f;
+		light->color[0]= 1.0f;
+		light->color[1]= 0.8f;
+		light->color[2]= 0.7f;
+		r_newrefdef.num_dlights++;
+	}*/
+
 	SetWorldFrame( int(r_newrefdef.time*2.0f) );
 
 	command_buffer.current_pos+= ComIn_ClearDepthBuffer( 
