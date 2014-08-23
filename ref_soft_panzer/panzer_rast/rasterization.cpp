@@ -14,10 +14,13 @@ unsigned char* back_screen_buffer= NULL;
 depth_buffer_t* depth_buffer= NULL;
 int screen_size_x, screen_size_y;
 
-
-
+namespace Draw
+{
+	void InitSinTable();
+}
 void PRast_Init( int screen_width, int screen_height )
 {
+	Draw::InitSinTable();
 
     screen_size_x= screen_width;
     screen_size_y= screen_height;
@@ -72,14 +75,14 @@ namespace Draw
 
 
 //fast sintable for fast sin ( or not fast )
-const int sintable_size= 128;
+const int sintable_size= 64;
 const int sintable_convertion_k= (((long int) sintable_size )*0x100000000)  / PSR_2PI_FIXED16; //=sintable_size/(2*pi)
 
 static fixed16_t sintable[ sintable_size ];
 void InitSinTable()
 {
     for( unsigned int i= 0; i< sintable_size; i++ )
-        sintable[i]= fixed16_t( 65536.0f * sin( float(i) * ( PSR_2PI / float(sintable_size) ) ) );
+        sintable[i]= fixed16_t( 65536.0f * sinf( float(i) * ( PSR_2PI / float(sintable_size) ) ) );
 }
 fixed16_t FastSin( fixed16_t x )
 {
@@ -116,7 +119,12 @@ unsigned char constant_blend_factor;
 unsigned char inv_constant_blend_factor;
 int constant_light;
 unsigned char constant_color[4];
+fixed16_t constant_time;//for turbulence
 
+void SetConstantTime( fixed16_t time )
+{
+	constant_time= time;
+}
 void SetConstantAlpha( unsigned char a )
 {
     constant_alpha= a;
@@ -916,7 +924,7 @@ enum BlendingMode blending_mode,
 enum AlphaTestMode alpha_test_mode,
 enum LightingMode lighting_mode,
 enum LightmapMode lightmap_mode,
-enum AdditionalEffectMode additional_lighting_mode,
+enum AdditionalEffectMode additional_effect_mode,
 enum DepthTestMode depth_test_mode,
 bool write_depth >
 void DrawTriangleUp()
@@ -1154,18 +1162,54 @@ void DrawTriangleUp()
             else if( color_mode == COLOR_FROM_TEXTURE )
             {
                 if( texture_mode == TEXTURE_NEAREST )
-                    TexelFetchNearest( Fixed16MulResultToInt( line_tc[0], final_z ),
-                                      Fixed16MulResultToInt( line_tc[1], final_z ), color  );
+				{
+					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
+					{
+						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
+						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
+						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
+						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
+						TexelFetchNearest( (v+dv)>>16, (u+du)>>16, color );
+					}
+					else 
+						TexelFetchNearest( Fixed16MulResultToInt( line_tc[0], final_z ),
+										Fixed16MulResultToInt( line_tc[1], final_z ), color );
+				}
                 else if( texture_mode == TEXTURE_LINEAR )
-                    TexelFetchLinear( Fixed16Mul( line_tc[0], final_z ), Fixed16Mul( line_tc[1] , final_z ), color );
+				{
+					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
+					{
+						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
+						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
+						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
+						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
+						TexelFetchLinear( v+dv, u+du, color );
+					}
+					else
+						TexelFetchLinear( Fixed16Mul( line_tc[0], final_z ), Fixed16Mul( line_tc[1] , final_z ), color );
+				}
                 else if( texture_mode == TEXTURE_FAKE_FILTER )
                 {
 					const static int shift_table[]= { 16384,0, 32768,49152, 49152,32768, 0,16384 };
-					int ind= (x&1)+((y&1)<<1);
-					int uu= shift_table[ind+1];
-					int vv= shift_table[ind];
-                    TexelFetchNearest( ( Fixed16Mul( line_tc[0], final_z ) + uu )>> 16,
-                                       ( Fixed16Mul( line_tc[1], final_z ) + vv )>> 16, color  );
+					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
+					{
+						int ind= (x&1)+((y&1)<<1);
+						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
+						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
+						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
+						du+= shift_table[ind+1];
+						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
+						dv+= shift_table[ind];
+						TexelFetchNearest( (v+dv)>>16, (u+du)>>16, color );
+					}
+					else
+					{
+						int ind= (x&1)+((y&1)<<1);
+						int uu= shift_table[ind+1];
+						int vv= shift_table[ind];
+						TexelFetchNearest( ( Fixed16Mul( line_tc[0], final_z ) + uu )>> 16,
+										   ( Fixed16Mul( line_tc[1], final_z ) + vv )>> 16, color  );
+					}
                 }
                 else if( texture_mode == TEXTURE_NEAREST_MIPMAP )
                 {
@@ -1442,7 +1486,7 @@ enum BlendingMode blending_mode,
 enum AlphaTestMode alpha_test_mode,
 enum LightingMode lighting_mode,
 enum LightmapMode lightmap_mode,
-enum AdditionalEffectMode additional_lighting_mode,
+enum AdditionalEffectMode additional_effect_mode,
 enum DepthTestMode depth_test_mode,
 bool write_depth >
 void DrawTriangleDown()
@@ -1677,18 +1721,54 @@ void DrawTriangleDown()
             else if( color_mode == COLOR_FROM_TEXTURE )
             {
                 if( texture_mode == TEXTURE_NEAREST )
-                    TexelFetchNearest( Fixed16MulResultToInt( line_tc[0], final_z ),
-                                       Fixed16MulResultToInt( line_tc[1], final_z ), color  );
+				{
+					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
+					{
+						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
+						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
+						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
+						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
+						TexelFetchNearest( (v+dv)>>16, (u+du)>>16, color );
+					}
+					else 
+						TexelFetchNearest( Fixed16MulResultToInt( line_tc[0], final_z ),
+											Fixed16MulResultToInt( line_tc[1], final_z ), color  );
+				}
                 else if( texture_mode == TEXTURE_LINEAR )
-                    TexelFetchLinear( Fixed16Mul( line_tc[0], final_z ), Fixed16Mul( line_tc[1] , final_z ), color );
+				{
+					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
+					{
+						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
+						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
+						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
+						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
+						TexelFetchLinear( v+dv, u+du, color );
+					}
+					else
+						TexelFetchLinear( Fixed16Mul( line_tc[0], final_z ), Fixed16Mul( line_tc[1] , final_z ), color );
+				}
                 else if( texture_mode == TEXTURE_FAKE_FILTER )
                 {
                     const static int shift_table[]= { 16384,0, 32768,49152, 49152,32768, 0,16384 };
-					int ind= (x&1)+((y&1)<<1);
-					int uu= shift_table[ind+1];
-					int vv= shift_table[ind];
-                    TexelFetchNearest( ( Fixed16Mul( line_tc[0], final_z ) + uu )>> 16,
-                                       ( Fixed16Mul( line_tc[1], final_z ) + vv )>> 16, color  );
+					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
+					{
+						int ind= (x&1)+((y&1)<<1);
+						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
+						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
+						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
+						du+= shift_table[ind+1];
+						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
+						dv+= shift_table[ind];
+						TexelFetchNearest( (v+dv)>>16, (u+du)>>16, color );
+					}
+					else
+					{
+						int ind= (x&1)+((y&1)<<1);
+						int uu= shift_table[ind+1];
+						int vv= shift_table[ind];
+						TexelFetchNearest( ( Fixed16Mul( line_tc[0], final_z ) + uu )>> 16,
+										   ( Fixed16Mul( line_tc[1], final_z ) + vv )>> 16, color  );
+					}
                 }
                 else if( texture_mode == TEXTURE_NEAREST_MIPMAP )
                 {
@@ -2548,9 +2628,97 @@ void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapColoredLinearBlend)(c
 < COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 
 
+//world turbulence surfaces functions
+void (*DrawWorldTriangleTextureNearestTurbulence)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_TURBULENCE, DEPTH_TEST_LESS, true >;
+void (*DrawWorldTriangleTextureLinearTurbulence)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_TURBULENCE, DEPTH_TEST_LESS, true >;
+void (*DrawWorldTriangleTextureFakeFilterTurbulence)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_TURBULENCE, DEPTH_TEST_LESS, true >;
+//turbulence with blending
+void (*DrawWorldTriangleTextureNearestTurbulenceBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_TURBULENCE, DEPTH_TEST_LESS, true >;
+void (*DrawWorldTriangleTextureLinearTurbulenceBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_TURBULENCE, DEPTH_TEST_LESS, true >;
+void (*DrawWorldTriangleTextureFakeFilterTurbulenceBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_TURBULENCE, DEPTH_TEST_LESS, true >;
 
-void (*DrawTexturedModelTriangleFromBuffer)( char* buff )= Draw::DrawTriangleFromBuffer
+//world turbulence surfaces functions PALETTIZED
+void (*DrawWorldTriangleTextureNearestPalettizedTurbulence)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_TURBULENCE, DEPTH_TEST_LESS, true >;
+void (*DrawWorldTriangleTextureLinearPalettizedTurbulence)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_TURBULENCE, DEPTH_TEST_LESS, true >;
+void (*DrawWorldTriangleTextureFakeFilterPalettizedTurbulence)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_TURBULENCE, DEPTH_TEST_LESS, true >;
+//turbulence with blending
+void (*DrawWorldTriangleTextureNearestPalettizedTurbulenceBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_TURBULENCE, DEPTH_TEST_LESS, true >;
+void (*DrawWorldTriangleTextureLinearPalettizedTurbulenceBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_TURBULENCE, DEPTH_TEST_LESS, true >;
+void (*DrawWorldTriangleTextureFakeFilterPalettizedTurbulenceBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_TURBULENCE, DEPTH_TEST_LESS, true >;
+
+
+//world rendering functions without lightmaps
+void (*DrawWorldTriangleTextureNearest)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+void (*DrawWorldTriangleTextureLinear)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+void (*DrawWorldTriangleTextureFakeFilter)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+//world rendering functions without lightmaps BLEND
+void (*DrawWorldTriangleTextureNearestBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+void (*DrawWorldTriangleTextureLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+void (*DrawWorldTriangleTextureFakeFilterBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+
+//world rendering functions without lightmaps PALETTIZED
+void (*DrawWorldTriangleTextureNearestPalettized)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+void (*DrawWorldTriangleTextureLinearPalettized)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+void (*DrawWorldTriangleTextureFakeFilterPalettized)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+//world rendering functions without lightmaps BLEND
+void (*DrawWorldTriangleTextureNearestPalettizedBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+void (*DrawWorldTriangleTextureLinearPalettizedBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+void (*DrawWorldTriangleTextureFakeFilterPalettizedBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+
+
+
+//colored models
+void (*DrawModelTriangleTextureNearestLightingColored)( char* buff )= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_PER_VERTEX_COLORED, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+void (*DrawModelTriangleTextureLinearLightingColored)( char* buff )= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_PER_VERTEX_COLORED, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+void (*DrawModelTriangleTextureFakeFilterLightingColored)( char* buff )= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_PER_VERTEX_COLORED, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+//colored models with blending
+void (*DrawModelTriangleTextureNearestLightingColoredBlend)( char* buff )= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_CONSTANT, ALPHA_TEST_NONE, LIGHTING_PER_VERTEX_COLORED, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+void (*DrawModelTriangleTextureLinearLightingColoredBlend)( char* buff )= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_CONSTANT, ALPHA_TEST_NONE, LIGHTING_PER_VERTEX_COLORED, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+void (*DrawModelTriangleTextureFakeFilterLightingColoredBlend)( char* buff )= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_CONSTANT, ALPHA_TEST_NONE, LIGHTING_PER_VERTEX_COLORED, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+//fullbright models
+void (*DrawModelTriangleTextureNearest)( char* buff )= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+void (*DrawModelTriangleTextureLinear)( char* buff )= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+void (*DrawModelTriangleTextureFakeFilter)( char* buff )= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+//fullbright models with blending
+void (*DrawModelTriangleTextureNearestBlend)( char* buff )= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_CONSTANT, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+void (*DrawModelTriangleTextureLinearBlend)( char* buff )= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_CONSTANT, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+void (*DrawModelTriangleTextureFakeFilterBlend)( char* buff )= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_CONSTANT, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 
 
 void (*DrawParticleSprite)(int x0, int y0, int x1, int y1, fixed16_t depth)= Draw::DrawSprite

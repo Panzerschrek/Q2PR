@@ -967,11 +967,10 @@ void ColorByteSwap( unsigned char* color )
 }
 void ColorFloatSwap( float* color )
 {
-	unsigned char tmp= color[0];
+	float tmp= color[0];
 	color[0]= color[2];
 	color[2]= tmp;
 }
-
 
 
 short   ShortSwap (short l)

@@ -12,7 +12,7 @@ static lightmap_buffer_t lightmap_buffer;
 static lightmap_buffer_t back_lightmap_buffer;
 static int	r_dlightframecount;
 
-static dlight_t transformed_dlights[32];//transformed lights( saturation correction )
+static dlight_t transformed_dlights[MAX_DLIGHTS];//transformed lights( saturation correction )
 
 #define D_LIGHTMAP_LINEAR 0
 #define D_LIGHTMAP_LINEAR_RGBS 1
@@ -126,7 +126,7 @@ void R_PushDlights (model_t *model)
 	dlight_t	*l;
 
 	r_dlightframecount = r_framecount;
-	for (i=0, l = r_newrefdef.dlights ; i<r_newrefdef.num_dlights && i<32 ; i++, l++)
+	for (i=0, l = r_newrefdef.dlights ; i<r_newrefdef.num_dlights && i<MAX_DLIGHTS ; i++, l++)
 	{
 		R_MarkLights ( l, 1<<i, 
 			model->nodes + model->firstnode);
@@ -134,7 +134,7 @@ void R_PushDlights (model_t *model)
 	}
 
 	int real_lights= r_newrefdef.num_dlights;
-	if( real_lights > 32 ) real_lights= 32;
+	if( real_lights > MAX_DLIGHTS ) real_lights= MAX_DLIGHTS;
 	ColorCorrectLights(real_lights);
 }
 
@@ -399,15 +399,16 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 		dt >>= 4;
 
 		lightmap = surf->samples;
-		VectorCopy (vec3_origin, pointcolor);
+		pointcolor[0]= 0.0f; pointcolor[1]= 0.0f; pointcolor[2]= 0.0f;
 		if (lightmap)
 		{
-			lightmap += ( dt * ((surf->extents[0]>>4)+1) + ds )<<2;
+			int lightmap_size= (is_colored_lightmap) ? 4 : 1;
+			lightmap += ( dt * ((surf->extents[0]>>4)+1) + ds ) * lightmap_size;
 
-			for (maps = 0 ; maps < MAXLIGHTMAPS && surf->styles[maps] != 255 ;
+			/*for (maps = 0 ; maps < MAXLIGHTMAPS && surf->styles[maps] != 255 ;
 					maps++)
 			{
-				/*scales = r_newrefdef.lightstyles[surf->styles[maps]].rgb;
+				scales = r_newrefdef.lightstyles[surf->styles[maps]].rgb;
 				float swapped_scales[3]= { scales[0], scales[1], scales[2] };
 				ColorFloatSwap( swapped_scales );
 				float light_scaler= 1.0f / 255.0f;
@@ -415,24 +416,32 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 					light_scaler*= float(lightmap[3]) * (1.0f/255.0f);//convertion from rgbs
 				pointcolor[0]+= float(lightmap[0])* light_scaler * swapped_scales[0];
 				pointcolor[1]+= float(lightmap[1])* light_scaler * swapped_scales[1];
-				pointcolor[2]+= float(lightmap[2])* light_scaler * swapped_scales[2];*/
+				pointcolor[2]+= float(lightmap[2])* light_scaler * swapped_scales[2];
 
-				//temporary, turn off lightmap changing and use first lightmap
+				lightmap+= ( ((surf->extents[0]>>4)+1) * ((surf->extents[1]>>4)+1) ) * lightmap_size;
+			}*/
+			//take first lightmap only (temporary)
+			if( is_colored_lightmap )
+			{
 				float light_scaler= 1.0f / 255.0f;
 				if( lightmap[3] != 0 )
 					light_scaler*= float(lightmap[3]) * (1.0f/255.0f);//convertion from rgbs
 				pointcolor[0]+= float(lightmap[0])* light_scaler;
 				pointcolor[1]+= float(lightmap[1])* light_scaler;
 				pointcolor[2]+= float(lightmap[2])* light_scaler;
-			
-
-				lightmap += ( ((surf->extents[0]>>4)+1) *
-						(surf->extents[1]>>4)+1  )<<2;
 			}
-		}
+			else
+			{
+				float l= float(lightmap[0]) * (1.0f/255.0f);
+				pointcolor[0]+= l;
+				pointcolor[1]+= l;
+				pointcolor[2]+= l;
+			}
+			
+		}//if is lightmap
 		
 		return 1;
-	}
+	}//for surfaces
 
 // go down back side
 	return RecursiveLightPoint (node->children[!side], mid, end);
@@ -467,7 +476,8 @@ void R_LightPoint (vec3_t p, vec3_t color)
 	
 	if (r == -1)
 	{
-		VectorCopy (vec3_origin, color);
+		//VectorCopy (vec3_origin, color);
+		color[0]= color[1]= color[2]= 0.5f;//PANZER - middle lighting
 	}
 	else
 	{

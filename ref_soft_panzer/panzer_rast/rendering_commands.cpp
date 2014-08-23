@@ -14,6 +14,7 @@ void SetConstantAlpha( unsigned char a );
 void SetConstantBlendFactor( unsigned char b );
 void SetConstantLight( int l );
 void SetConstantColor( const unsigned char* color );
+void SetConstantTime( fixed16_t time );
 
 void SetTexture( const Texture* t );
 void SetTextureLod( const Texture* t, int lod );
@@ -100,6 +101,14 @@ unsigned int ComIn_SetConstantColor( void* command_buffer, const unsigned char* 
 	*((int*)command_buffer)= COMMAND_SET_CONSTANT_COLOR;
 	command_buffer= ( (int*)command_buffer ) + 1;
 	*((int*)command_buffer)= *((int*)color);
+	return sizeof(int)*2;
+}
+
+unsigned int ComIn_SetConstantTime( void* command_buffer, fixed16_t time )
+{
+	*((int*)command_buffer)= COMMAND_SET_CONSTANT_TIME;
+	command_buffer= ( (int*)command_buffer ) + 1;
+	*((int*)command_buffer)= time;
 	return sizeof(int)*2;
 }
 unsigned int ComIn_SetTexture( void* command_buffer, const Texture* texture )
@@ -216,6 +225,12 @@ unsigned int ComOut_SetConstantColor( const void* command_buffer )
 	Draw::SetConstantColor( ((unsigned char*)command_buffer) );
 	return 4;
 }
+unsigned int ComOut_SetConstantTime( const void* command_buffer )
+{
+	Draw::SetConstantTime( *((int*)command_buffer) );
+	return 4;
+}
+
 unsigned int ComOut_SetTexture( const void* command_buffer )
 {
 	Draw::SetTexture( *((Texture**)command_buffer) );
@@ -331,6 +346,7 @@ ComOut_SetConstantAlpha,
 ComOut_SetConstantBlendFactor,
 ComOut_SetConstantLight,
 ComOut_SetConstantColor,
+ComOut_SetConstantTime,
 
 ComOut_SetTexture,
 ComOut_SetTextureLod,

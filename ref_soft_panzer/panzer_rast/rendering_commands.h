@@ -19,6 +19,7 @@ enum RenderingCommands
 	COMMAND_SET_CONSTANT_BLEND_FACTOR,
 	COMMAND_SET_CONSTANT_LIGHT,
 	COMMAND_SET_CONSTANT_COLOR,
+	COMMAND_SET_CONSTANT_TIME,
 
 	//texture and lightmap change
 	COMMAND_SET_TEXTURE,
@@ -97,6 +98,8 @@ unsigned int ComIn_SetConstantAlpha( void* command_buffer, unsigned char alpha )
 unsigned int ComIn_SetConstantBlendFactor( void* command_buffer, unsigned char blend_factor );
 unsigned int ComIn_SetConstantLight( void* command_buffer, int l );
 unsigned int ComIn_SetConstantColor( void* command_buffer, const unsigned char* color );
+unsigned int ComIn_SetConstantTime( void* command_buffer, fixed16_t time );
+
 unsigned int ComIn_SetTexture( void* command_buffer, const Texture* texture );
 unsigned int ComIn_SetTextureLod( void* command_buffer, const Texture* texture, int lod );
 unsigned int ComIn_SetTexturePalette( void* command_buffer, const Texture* texture );

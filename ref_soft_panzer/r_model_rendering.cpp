@@ -20,11 +20,10 @@ void CalculateEntityMatrix( entity_t* ent, m_Mat4* mat_out )
 	m_Vec3 origin= v_old * ent->backlerp + v_new * (1.0f-ent->backlerp);
 	translate.Translate( origin );
 
-	//WARNING! rotation matrices and thier order can be invalid!
+	//WARNING! rotation matrices and their order can be invalid!
 	rot_x.RotateX( -ent->angles[2] * to_rad );
 	rot_z.RotateZ( -ent->angles[1] * to_rad );
 	rot_y.RotateY( ent->angles[0] * to_rad );
-
 
 	*mat_out= rot_y * rot_x * rot_z * translate;
 }
@@ -110,7 +109,11 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos, bool is_aplha
 	if( model->firstmodelsurface == 0)//HACK
 		return;
 
-	triangle_draw_func_t func= GetWorldNearDrawFunc( is_aplha );
+	triangle_draw_func_t  near_draw_func= GetWorldNearDrawFunc(is_aplha);
+	triangle_draw_func_t  far_draw_func= GetWorldFarDrawFunc(is_aplha);
+	triangle_draw_func_t  near_draw_func_no_lightmap= GetWorldNearDrawFuncNoLightmaps(is_aplha, false);
+	triangle_draw_func_t  far_draw_func_no_lightmap= GetWorldFarDrawFuncNoLightmaps(is_aplha, false);
+
 
 	m_Mat4 entity_mat, result_mat;
 	CalculateEntityMatrix( ent, &entity_mat );
@@ -138,15 +141,23 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos, bool is_aplha
 			texinfo= texinfo->next;
 			img_num--;
 		}
-		if( (texinfo->flags&(SURF_NODRAW|SURF_WARP|SURF_FLOWING)) != 0 )
+		if( (texinfo->flags&(SURF_NODRAW)) != 0 )
 				continue;
 
-		command_buffer.current_pos += 
-			ComIn_SetLightmap( command_buffer.current_pos + (char*)command_buffer.buffer,
-			L_GetSurfaceDynamicLightmap(surf), (surf->extents[0]>>4) + 1 );
-		int cur_triangles= DrawWorldSurface( surf, func, func, texinfo, 0 );
-
-		command_buffer.current_pos+= sizeof(int) + sizeof(DrawTriangleCall) + cur_triangles * 4 * sizeof(int)*7;
+		bool no_lightmap= (surf->flags&SURF_DRAWTURB)!= 0 || (surf->texinfo->flags&SURF_WARP)!= 0;
+		if( no_lightmap )
+		{
+			int cur_triangles= DrawWorldSurface( surf, near_draw_func_no_lightmap, far_draw_func_no_lightmap, texinfo, 0 );
+			command_buffer.current_pos+= sizeof(int) + sizeof(DrawTriangleCall) + cur_triangles * 4 * sizeof(int)*5;
+		}
+		else
+		{
+			command_buffer.current_pos += 
+				ComIn_SetLightmap( command_buffer.current_pos + (char*)command_buffer.buffer,
+				L_GetSurfaceDynamicLightmap(surf), (surf->extents[0]>>4) + 1 );
+			int cur_triangles= DrawWorldSurface( surf, near_draw_func, far_draw_func, texinfo, 0 );
+			command_buffer.current_pos+= sizeof(int) + sizeof(DrawTriangleCall) + cur_triangles * 4 * sizeof(int)*7;
+		}
 	}
 }
 
@@ -165,9 +176,8 @@ union
 }current_model_vertex_lights[ MODEL_MAX_VERTICES ];
 
 
-void CalcualteModelVerticesAndLights( entity_t* ent )
+void CalculateModelVertices(  entity_t* ent )
 {
-
 	dmdl_t* model= (dmdl_t* )ent->model->extradata;
 
 	int current_model_frame= ent->frame % model->num_frames;
@@ -187,15 +197,24 @@ void CalcualteModelVerticesAndLights( entity_t* ent )
 		current_model_vertices[i].z= ( float(frame->verts[i].v[2]) * frame->scale[2] + frame->translate[2] ) * interp_k +
 				( float(old_frame->verts[i].v[2]) * old_frame->scale[2] + old_frame->translate[2] ) * inv_iterp_k ;
 	}
+}
 
-	dlight_t model_lights[ 32 ];
-	int mode_dlight_num= r_newrefdef.num_dlights;
-	if( mode_dlight_num > 32 )
-		mode_dlight_num= 32;
+void CalculateModelLights( entity_t* ent )
+{
+	dmdl_t* model= (dmdl_t* )ent->model->extradata;
+	int current_model_frame= ent->frame % model->num_frames;
+	int prev_model_frame= ent->oldframe %model->num_frames;
+	daliasframe_t* frame= (daliasframe_t*)( (char*)model + model->ofs_frames + current_model_frame * model->framesize );
+
+
+	dlight_t model_lights[ MAX_DLIGHTS ];
+	int model_dlight_num= r_newrefdef.num_dlights;
+	if( model_dlight_num > MAX_DLIGHTS )
+		model_dlight_num= MAX_DLIGHTS;
 
 	m_Mat4 light_transform_matrix;//transformation matrix world_space => model_space
 	CalcualteEntityReverseMatrix( ent, &light_transform_matrix );
-	for( int i= 0; i< mode_dlight_num; i++ )
+	for( int i= 0; i< model_dlight_num; i++ )
 	{
 		m_Vec3 light_pos( r_newrefdef.dlights[i].origin[0], r_newrefdef.dlights[i].origin[1], r_newrefdef.dlights[i].origin[2] );
 		*((m_Vec3*)model_lights[i].origin)= light_pos * light_transform_matrix;
@@ -210,12 +229,22 @@ void CalcualteModelVerticesAndLights( entity_t* ent )
 	{
 		//add sinwave light pulsation 1 cycle per second
 		unsigned char light= (unsigned char)( ( sin( r_newrefdef.time * 2.0f * 3.1415926535f ) + 3.0f ) * 22.0f );
+		int i_light= light | (light<<8) | (light<<16) | (light<<24);
 		for( int i= 0; i< model->num_xyz; i++ )
-		{
-			current_model_vertex_lights[i].colored_light[0]=
-			current_model_vertex_lights[i].colored_light[1]=
-			current_model_vertex_lights[i].colored_light[2]= light;
-		}
+			current_model_vertex_lights[i].light= i_light;
+	}
+	else if( (ent->flags&(RF_SHELL_RED|RF_SHELL_BLUE|RF_SHELL_GREEN)) != 0 )
+	{
+		unsigned char light[4]= { 8,8,8,8 };
+		if( (ent->flags&RF_SHELL_RED) != 0 )
+			light[0]= 255/3;
+		if( (ent->flags&RF_SHELL_GREEN) != 0 )
+			light[1]= 255/3;
+		if( (ent->flags&RF_SHELL_BLUE) != 0 )
+			light[2]= 255/3;
+		ColorByteSwap(light);
+		for( int i= 0; i< model->num_xyz; i++ )
+			current_model_vertex_lights[i].light= *((int*)light);
 	}
 	else
 	{
@@ -223,13 +252,14 @@ void CalcualteModelVerticesAndLights( entity_t* ent )
 		R_LightPoint ( ent->origin, ambient_light);
 		unsigned char final_ambient_light[4];
 
+		unsigned char min_light= ((ent->flags&RF_MINLIGHT) != 0) ? 16 : 8;
 		final_ambient_light[0]= (unsigned char)(ambient_light[0] * 255.0f);
-		if( final_ambient_light[0] < 8 ) final_ambient_light[0]= 8;
+		if( final_ambient_light[0] < min_light ) final_ambient_light[0]= min_light;
 		final_ambient_light[1]= (unsigned char)(ambient_light[1] * 255.0f);
-		if( final_ambient_light[1] < 8 ) final_ambient_light[1]= 8;
+		if( final_ambient_light[1] < min_light ) final_ambient_light[1]= min_light;
 		final_ambient_light[2]= (unsigned char)(ambient_light[2] * 255.0f);
-		if( final_ambient_light[2] < 8 ) final_ambient_light[2]= 8;
-
+		if( final_ambient_light[2] < min_light ) final_ambient_light[2]= min_light;
+		
 		for( int i= 0; i< model->num_xyz; i++ )
 		{
 			m_Vec3 normal(	r_avertexnormals[frame->verts[i].lightnormalindex][0],
@@ -242,7 +272,7 @@ void CalcualteModelVerticesAndLights( entity_t* ent )
 			current_model_vertex_lights[i].colored_light[1]= (unsigned char)(light_scale_k * final_ambient_light[1]);
 			current_model_vertex_lights[i].colored_light[2]= (unsigned char)(light_scale_k * final_ambient_light[2]);
 		
-			for( int l= 0; l< mode_dlight_num; l++ )
+			for( int l= 0; l< model_dlight_num; l++ )
 			{
 				m_Vec3 vec_to_light(
 					model_lights[l].origin[0] - current_model_vertices[i].x,
@@ -277,7 +307,41 @@ void CalcualteModelVerticesAndLights( entity_t* ent )
 	}//if default model lighting
 }
 
-void DrawAliasEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
+triangle_draw_func_t model_draw_funcs_table[]=
+{
+	DrawModelTriangleTextureNearestLightingColored,
+	DrawModelTriangleTextureLinearLightingColored,
+	DrawModelTriangleTextureFakeFilterLightingColored,
+	DrawModelTriangleTextureNearestLightingColoredBlend,
+	DrawModelTriangleTextureLinearLightingColoredBlend,
+	DrawModelTriangleTextureFakeFilterLightingColoredBlend,
+	//fullbright
+	DrawModelTriangleTextureNearest,
+	DrawModelTriangleTextureLinear,
+	DrawModelTriangleTextureFakeFilter,
+	DrawModelTriangleTextureNearestBlend,
+	DrawModelTriangleTextureLinearBlend,
+	DrawModelTriangleTextureFakeFilterBlend,
+};
+
+triangle_draw_func_t GetModelDrawFunc( entity_t* ent )
+{
+	int coord= 0;
+	if( (ent->flags&RF_FULLBRIGHT) != 0 )
+		coord+= 6;
+	if( (ent->flags&RF_TRANSLUCENT) != 0 && ent->alpha > 0.05f )
+		coord+= 3;
+	if( strcmp( r_texture_mode->string, "texture_linear" ) == 0 )
+		coord+= 1;
+	else if( strcmp( r_texture_mode->string, "texture_fake_filter" ) == 0 )
+		coord+= 2;
+	else
+		coord+= 0;
+
+	return model_draw_funcs_table[ coord ];
+}
+
+void DrawAliasEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 {
 	float width_f= float(vid.width) * 65536.0f;
 	float height_f= float(vid.height) * 65536.0f;
@@ -288,12 +352,11 @@ void DrawAliasEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 
 	dtriangle_t* tris= (dtriangle_t*)( (char*)model + model->ofs_tris );
 	dstvert_t* st= (dstvert_t*)( (char*)model + model->ofs_st );
-
-	/*int current_model_frame= ent->frame % model->num_frames;
-	int prev_model_frame= ent->oldframe %model->num_frames;
-	daliasframe_t* frame= (daliasframe_t*)( (char*)model + model->ofs_frames + current_model_frame * model->framesize );
-	daliasframe_t* old_frame= (daliasframe_t*)( (char*)model + model->ofs_frames + prev_model_frame * model->framesize );*/
-	CalcualteModelVerticesAndLights( ent );
+	
+	bool is_fullbright= (ent->flags&RF_FULLBRIGHT) != 0;
+	CalculateModelVertices( ent );
+	if( !is_fullbright )
+		CalculateModelLights( ent );
 
 	m_Mat4 entity_mat, result_mat;
 	CalculateEntityMatrix( ent, &entity_mat );
@@ -302,6 +365,9 @@ void DrawAliasEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 	char* buff= (char*) command_buffer.buffer;
 	buff+= command_buffer.current_pos;
 	char* buff0= buff;
+
+	if( (ent->flags&RF_TRANSLUCENT) != 0 && ent->alpha > 0.05f )
+		buff+= ComIn_SetConstantBlendFactor( buff, int(ent->alpha*250.0f) );
 
 	int current_texture_frame= ent->skinnum % model->num_skins;
 	Texture* tex= R_FindTexture( ent->model->skins[current_texture_frame] );
@@ -313,8 +379,8 @@ void DrawAliasEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 
 	DrawTriangleCall* call= (DrawTriangleCall*)buff;
 	call->triangle_count= 0;
-	call->vertex_size= 3 * sizeof(int) + 2 * sizeof(int) + sizeof(int);
-	call->DrawFromBufferFunc= DrawTexturedModelTriangleFromBuffer;
+	call->vertex_size= is_fullbright ? ( sizeof(int)*3 + sizeof(int)*2 ): ( sizeof(int)*3 + sizeof(int)*2 + 4);
+	call->DrawFromBufferFunc= GetModelDrawFunc( ent );
 	buff+= sizeof(DrawTriangleCall);
 
 	float inv_iterp_k= ent->backlerp;
@@ -369,7 +435,12 @@ void DrawAliasEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 		*((int*)triangle_in_color+1)= current_model_vertex_lights[ tris->index_xyz[1] ].light;
 		*((int*)triangle_in_color+2)= current_model_vertex_lights[ tris->index_xyz[2] ].light;
 
-		if( DrawTexturedModelTriangleToBuffer( buff ) != 0 )
+		int draw_result;
+		if(is_fullbright)
+			draw_result= DrawFullbrightTexturedModelTriangleToBuffer(buff);
+		else
+			draw_result= DrawTexturedModelTriangleToBuffer( buff );
+		if( draw_result != 0 )
 		{
 			buff+= 4 * call->vertex_size;
 			call->triangle_count++;

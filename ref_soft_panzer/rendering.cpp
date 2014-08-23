@@ -73,6 +73,10 @@ struct fps_calc_t
 	int last_fps;
 	int frames;
 
+	unsigned long long int long_frame_begin_time;
+	unsigned long long int long_frontend_end_time;
+	unsigned long long int long_frame_end_time;
+
 	int total_frames;
 	int start_time;
 };
@@ -437,6 +441,21 @@ void DrawCharString( int x, int y, const char* str )
 	}
 }
 
+long long unsigned int GetProcessorTickCount()
+{
+	unsigned long long int result;
+	unsigned long long int* result_ptr= &result;
+	__asm
+	{
+		mov ecx, result_ptr
+		rdtsc
+		mov dword ptr[ecx], eax
+		mov dword ptr[ecx+4], edx
+	}
+	return result;
+}
+
+
 void CalculateAndShowFPS()
 {
 	int current_time= clock();
@@ -454,10 +473,22 @@ void CalculateAndShowFPS()
 	fps_calc.last_frame_time= current_time;
 	fps_calc.total_frames++;
 
-	char fps_str[32];
-	sprintf( fps_str, " fps: %d\n %dms \n total: %2.3f", fps_calc.last_fps, dt * 1000 / CLOCKS_PER_SEC,
-		(current_time == fps_calc.start_time) ? 60 : (float(CLOCKS_PER_SEC*fps_calc.total_frames)/float(current_time-fps_calc.start_time)) );
-	DrawCharString( vid.width - 8 * 16, 8, fps_str );
+
+	/*fps_calc.long_frame_end_time= GetProcessorTickCount();
+	unsigned long long int all_frame_dt= fps_calc.long_frame_end_time - fps_calc.long_frame_begin_time;
+	unsigned long long int frontend_dt= fps_calc.long_frontend_end_time - fps_calc.long_frame_begin_time;
+	unsigned long long int div= (frontend_dt<<10)/all_frame_dt;*/
+	int div= 512;
+
+	//fps_calc.long_frame_begin_time= fps_calc.long_frame_end_time;
+
+
+
+	char fps_str[128];
+	sprintf( fps_str, "fps: %d\n %dms\ntotal: %2.3f\nfrontend: %3.2f%%\n", fps_calc.last_fps, dt * 1000 / CLOCKS_PER_SEC,
+		(current_time == fps_calc.start_time) ? 60 : (float(CLOCKS_PER_SEC*fps_calc.total_frames)/float(current_time-fps_calc.start_time)),
+		float(div) / 1024.0f * 100.0f );
+	DrawCharString( vid.width - 10 * 16, 8, fps_str );
 
 	fps_calc.frames++;
 }
@@ -841,11 +872,12 @@ void DrawEntities(m_Mat4* mat, vec3_t cam_pos, bool alpha_entities )
 	}
 }
 
+
+
 extern "C" void PANZER_RenderFrame(refdef_t *fd)
 {
 	r_newrefdef= *fd;
 	r_framecount++;
-
 	/*if( r_newrefdef.num_dlights < 32 )
 	{
 		dlight_t* light= r_newrefdef.dlights + r_newrefdef.num_dlights;
@@ -871,6 +903,8 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 
 		command_buffer.current_pos+= ComIn_SetTexturePaletteRaw(
 			(char*)command_buffer.buffer + command_buffer.current_pos, (unsigned char*)d_8to24table );
+		command_buffer.current_pos+= ComIn_SetConstantTime(
+			(char*)command_buffer.buffer + command_buffer.current_pos, int(r_newrefdef.time*65536.0f*64.0f) );
 
 		m_Mat4 pers, rot_x, rot_y, rot_z, result, scale, basis_change, shift;
 
@@ -937,5 +971,4 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 
 	if( use_multithreading)
 		DrawCharString(8, 32, "multithreading" );
-
 }

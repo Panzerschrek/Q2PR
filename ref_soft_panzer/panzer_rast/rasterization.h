@@ -28,60 +28,80 @@ void AlphaBlendColorBuffer( const unsigned char* color );
 void AlphaBlendColorBufferAndSwapRedBlueAlphaLost( const unsigned char* color );
 
 
-extern int (*DrawWorldTriangleToBuffer)( char* buff );
+extern int (*DrawWorldTriangleToBuffer)( char* buff );//draw textured lightmapped triangle
 //world rendering functions
-extern void (*DrawWorldTriangleTextureNearestLightmapLinear)(char*buff);
+extern void (*DrawWorldTriangleTextureNearestLightmapLinear)(char*buff);//nearest textures
 extern void (*DrawWorldTriangleTextureNearestLightmapLiearRGBS)(char*buff);
 extern void (*DrawWorldTriangleTextureNearestLightmapColoredLinear)(char*buff);
-
-extern void (*DrawWorldTriangleTextureLinearLightmapLinear)(char*buff);
+extern void (*DrawWorldTriangleTextureLinearLightmapLinear)(char*buff);//liear textures
 extern void (*DrawWorldTriangleTextureLinearLightmapLiearRGBS)(char*buff);
 extern void (*DrawWorldTriangleTextureLinearLightmapColoredLinear)(char*buff);
-
-extern void (*DrawWorldTriangleTextureFakeFilterLightmapLinear)(char*buff);
+extern void (*DrawWorldTriangleTextureFakeFilterLightmapLinear)(char*buff);//fake filter textures
 extern void (*DrawWorldTriangleTextureFakeFilterLightmapLiearRGBS)(char*buff);
 extern void (*DrawWorldTriangleTextureFakeFilterLightmapColoredLinear)(char*buff);
-
 //world rendering functions with avg blend
-extern void (*DrawWorldTriangleTextureNearestLightmapLinearBlend)(char*buff);
+extern void (*DrawWorldTriangleTextureNearestLightmapLinearBlend)(char*buff);//nearest textures
 extern void (*DrawWorldTriangleTextureNearestLightmapLiearRGBSBlend)(char*buff);
 extern void (*DrawWorldTriangleTextureNearestLightmapColoredLinearBlend)(char*buff);
-
-extern void (*DrawWorldTriangleTextureLinearLightmapLinearBlend)(char*buff);
+extern void (*DrawWorldTriangleTextureLinearLightmapLinearBlend)(char*buff);//liear textures
 extern void (*DrawWorldTriangleTextureLinearLightmapLiearRGBSBlend)(char*buff);
 extern void (*DrawWorldTriangleTextureLinearLightmapColoredLinearBlend)(char*buff);
-
-extern void (*DrawWorldTriangleTextureFakeFilterLightmapLinearBlend)(char*buff);
+extern void (*DrawWorldTriangleTextureFakeFilterLightmapLinearBlend)(char*buff);//fake filter textures
 extern void (*DrawWorldTriangleTextureFakeFilterLightmapLiearRGBSBlend)(char*buff);
 extern void (*DrawWorldTriangleTextureFakeFilterLightmapColoredLinearBlend)(char*buff);
 
-
-
 //world rendering functions PALETTIZED
-extern void (*DrawWorldTriangleTextureNearestPalettizedLightmapLinear)(char*buff);
+extern void (*DrawWorldTriangleTextureNearestPalettizedLightmapLinear)(char*buff);//nearest textures PALETTIZED
 extern void (*DrawWorldTriangleTextureNearestPalettizedLightmapLiearRGBS)(char*buff);
 extern void (*DrawWorldTriangleTextureNearestPalettizedLightmapColoredLinear)(char*buff);
-
-extern void (*DrawWorldTriangleTextureLinearPalettizedLightmapLinear)(char*buff);
+extern void (*DrawWorldTriangleTextureLinearPalettizedLightmapLinear)(char*buff);//liear textures PALETTIZED
 extern void (*DrawWorldTriangleTextureLinearPalettizedLightmapLiearRGBS)(char*buff);
 extern void (*DrawWorldTriangleTextureLinearPalettizedLightmapColoredLinear)(char*buff);
-
-extern void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapLinear)(char*buff);
+extern void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapLinear)(char*buff);//fake filter textures PALETTIZED
 extern void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapLiearRGBS)(char*buff);
 extern void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapColoredLinear)(char*buff);
-
 //world rendering functions with avg blend PALETTIZED
-extern void (*DrawWorldTriangleTextureNearestPalettizedLightmapLinearBlend)(char*buff);
+extern void (*DrawWorldTriangleTextureNearestPalettizedLightmapLinearBlend)(char*buff);//nearest textures PALETTIZED
 extern void (*DrawWorldTriangleTextureNearestPalettizedLightmapLiearRGBSBlend)(char*buff);
 extern void (*DrawWorldTriangleTextureNearestPalettizedLightmapColoredLinearBlend)(char*buff);
-
-extern void (*DrawWorldTriangleTextureLinearPalettizedLightmapLinearBlend)(char*buff);
+extern void (*DrawWorldTriangleTextureLinearPalettizedLightmapLinearBlend)(char*buff);//liear textures PALETTIZED
 extern void (*DrawWorldTriangleTextureLinearPalettizedLightmapLiearRGBSBlend)(char*buff);
 extern void (*DrawWorldTriangleTextureLinearPalettizedLightmapColoredLinearBlend)(char*buff);
-
-extern void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapLinearBlend)(char*buff);
+extern void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapLinearBlend)(char*buff);//fake filter textures PALETTIZED
 extern void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapLiearRGBSBlend)(char*buff);
 extern void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapColoredLinearBlend)(char*buff);
+
+
+extern int (*DrawWorldTriangleNoLightmapToBuffer)(char* buff);//for turbulence and no_lightmap surfaces
+//world rendering turblulence functions
+extern void (*DrawWorldTriangleTextureNearestTurbulence)(char*buff);
+extern void (*DrawWorldTriangleTextureLinearTurbulence)(char*buff);
+extern void (*DrawWorldTriangleTextureFakeFilterTurbulence)(char*buff);
+extern void (*DrawWorldTriangleTextureNearestTurbulenceBlend)(char*buff);//with blend
+extern void (*DrawWorldTriangleTextureLinearTurbulenceBlend)(char*buff);
+extern void (*DrawWorldTriangleTextureFakeFilterTurbulenceBlend)(char*buff);
+//world rendering turblulence functions PALETTIZED
+extern void (*DrawWorldTriangleTextureNearestPalettizedTurbulence)(char*buff);
+extern void (*DrawWorldTriangleTextureLinearPalettizedTurbulence)(char*buff);
+extern void (*DrawWorldTriangleTextureFakeFilterPalettizedTurbulence)(char*buff);
+extern void (*DrawWorldTriangleTextureNearestPalettizedTurbulenceBlend)(char*buff);//with blend
+extern void (*DrawWorldTriangleTextureLinearPalettizedTurbulenceBlend)(char*buff);
+extern void (*DrawWorldTriangleTextureFakeFilterPalettizedTurbulenceBlend)(char*buff);
+
+//world rendering functions without lightmaps
+extern void (*DrawWorldTriangleTextureNearest)(char*buff);
+extern void (*DrawWorldTriangleTextureLinear)(char*buff);
+extern void (*DrawWorldTriangleTextureFakeFilter)(char*buff);
+extern void (*DrawWorldTriangleTextureNearestBlend)(char*buff);//with blend
+extern void (*DrawWorldTriangleTextureLinearBlend)(char*buff);
+extern void (*DrawWorldTriangleTextureFakeFilterBlend)(char*buff);
+//world rendering functions without lightmaps PALETTIZED
+extern void (*DrawWorldTriangleTextureNearestPalettized)(char*buff);
+extern void (*DrawWorldTriangleTextureLinearPalettized)(char*buff);
+extern void (*DrawWorldTriangleTextureFakeFilterPalettized)(char*buff);
+extern void (*DrawWorldTriangleTextureNearestPalettizedBlend)(char*buff);//with blend
+extern void (*DrawWorldTriangleTextureLinearPalettizedBlend)(char*buff);
+extern void (*DrawWorldTriangleTextureFakeFilterPalettizedBlend)(char*buff);
 
 
 extern void (*DrawWorldSprite)(int x0, int y0, int x1, int y1, fixed16_t depth);
@@ -91,7 +111,24 @@ extern void (*DrawSkyTriangleFromBuffer)( char* buff );
 
 
 extern int (*DrawTexturedModelTriangleToBuffer)(char*buff);
-extern void (*DrawTexturedModelTriangleFromBuffer)( char* buff );
+extern int (*DrawFullbrightTexturedModelTriangleToBuffer)(char*buff);
+//default models functions
+extern void (*DrawModelTriangleTextureNearestLightingColored)( char* buff );
+extern void (*DrawModelTriangleTextureLinearLightingColored)( char* buff );
+extern void (*DrawModelTriangleTextureFakeFilterLightingColored)( char* buff );
+//default models functions with blend
+extern void (*DrawModelTriangleTextureNearestLightingColoredBlend)( char* buff );
+extern void (*DrawModelTriangleTextureLinearLightingColoredBlend)( char* buff );
+extern void (*DrawModelTriangleTextureFakeFilterLightingColoredBlend)( char* buff );
+//fullbright models
+extern void (*DrawModelTriangleTextureNearest)( char* buff );
+extern void (*DrawModelTriangleTextureLinear)( char* buff );
+extern void (*DrawModelTriangleTextureFakeFilter)( char* buff );
+//fullbright models with blend
+extern void (*DrawModelTriangleTextureNearestBlend)( char* buff );
+extern void (*DrawModelTriangleTextureLinearBlend)( char* buff );
+extern void (*DrawModelTriangleTextureFakeFilterBlend)( char* buff );
+
 
 //for model drawing
 extern int (*DrawMonoLightedTexturedTriangleToBuffer)( char* buff );
