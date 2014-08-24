@@ -28,7 +28,7 @@ void CalculateEntityMatrix( entity_t* ent, m_Mat4* mat_out )
 	*mat_out= rot_y * rot_x * rot_z * translate;
 }
 
-void CalcualteEntityReverseMatrix( entity_t* ent, m_Mat4* mat_out )
+void CalcualteEntityReverseMatrix( entity_t* ent, m_Mat4* mat_out, m_Mat4* normals_mat_out= NULL )
 {
 	float to_rad= 3.1415926535f / 180.0f;
 	m_Mat4 rot_x, rot_y, rot_z, translate;
@@ -43,8 +43,10 @@ void CalcualteEntityReverseMatrix( entity_t* ent, m_Mat4* mat_out )
 	rot_z.RotateZ( ent->angles[1] * to_rad );
 	rot_y.RotateY( -ent->angles[0] * to_rad );
 
-
 	*mat_out= translate * rot_z * rot_x * rot_y;
+
+	if(normals_mat_out!=NULL)
+		*normals_mat_out= rot_z * rot_x * rot_y;
 }
 
 void DrawSpriteEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
@@ -232,7 +234,9 @@ void CalculateModelLights( entity_t* ent )
 		model_dlight_num= MAX_DLIGHTS;
 
 	m_Mat4 light_transform_matrix;//transformation matrix world_space => model_space
-	CalcualteEntityReverseMatrix( ent, &light_transform_matrix );
+	m_Mat4 light_transform_normal_matrix;
+
+	CalcualteEntityReverseMatrix( ent, &light_transform_matrix, &light_transform_normal_matrix );
 	for( int i= 0; i< model_dlight_num; i++ )
 	{
 		m_Vec3 light_pos( r_newrefdef.dlights[i].origin[0], r_newrefdef.dlights[i].origin[1], r_newrefdef.dlights[i].origin[2] );
@@ -279,13 +283,14 @@ void CalculateModelLights( entity_t* ent )
 		final_ambient_light[2]= (unsigned char)(ambient_light[2] * 255.0f);
 		if( final_ambient_light[2] < min_light ) final_ambient_light[2]= min_light;
 		
+		const float light_scaler= 0.125f * 255.0f;
+
 		for( int i= 0; i< model->num_xyz; i++ )
 		{
 			m_Vec3 normal(	r_avertexnormals[frame->verts[i].lightnormalindex][0],
 							r_avertexnormals[frame->verts[i].lightnormalindex][1],
 							r_avertexnormals[frame->verts[i].lightnormalindex][2] );
 
-			//current_model_vertex_lights[i].light= *((int*)&final_ambient_light);
 			float light_scale_k= ( normal.z + 2.0f ) * 0.333f;
 			current_model_vertex_lights[i].colored_light[0]= (unsigned char)(light_scale_k * final_ambient_light[0]);
 			current_model_vertex_lights[i].colored_light[1]= (unsigned char)(light_scale_k * final_ambient_light[1]);
@@ -303,26 +308,75 @@ void CalculateModelLights( entity_t* ent )
 				{
 					float dst2= vec_to_light * vec_to_light;
 					float dst= sqrtf(dst2);
-					if( dst > model_lights[l].intensity )//light source to far
-						continue;
-					const float light_scaler= 0.5f;
-					float intencity= light_scaler * model_lights[l].intensity * dot / dst;
+					float intensity= light_scaler * model_lights[l].intensity * dot / dst2;
+					if( intensity > 1.0f )
+					{
+						int lights[3];
+						lights[0]= int(intensity* model_lights[l].color[0]) + current_model_vertex_lights[i].colored_light[0];
+						if( lights[0] > 255 ) lights[0]= 255;
+						lights[1]= int(intensity* model_lights[l].color[1]) + current_model_vertex_lights[i].colored_light[1];
+						if( lights[1] > 255 ) lights[1]= 255;
+						lights[2]= int(intensity* model_lights[l].color[2]) + current_model_vertex_lights[i].colored_light[2];
+						if( lights[2] > 255 ) lights[2]= 255;
 
-					int lights[3];
-					lights[0]= int(intencity* model_lights[l].color[0]) + current_model_vertex_lights[i].colored_light[0];
+						current_model_vertex_lights[i].colored_light[0]= lights[0];
+						current_model_vertex_lights[i].colored_light[1]= lights[1];
+						current_model_vertex_lights[i].colored_light[2]= lights[2];
+					}//if light not to far
+				}//if dot > 0 
+			}//for lights
+		}//for vertices
+
+
+		//transformed parameters
+		/*m_Vec3 player_flashlight_pos;
+		m_Vec3 player_flashlight_dir;
+		player_flashlight_pos= *((m_Vec3*)player_flashlight.origin) * light_transform_matrix;
+		player_flashlight_dir= *((m_Vec3*)player_flashlight.direction) * light_transform_normal_matrix;
+		player_flashlight_dir= player_flashlight_dir;
+
+		float min_flashlight_cos= cosf( player_flashlight.cone_radius );
+
+		for( int i= 0; i< model->num_xyz; i++ )
+		{
+			m_Vec3 normal(	r_avertexnormals[frame->verts[i].lightnormalindex][0],
+							r_avertexnormals[frame->verts[i].lightnormalindex][1],
+							r_avertexnormals[frame->verts[i].lightnormalindex][2] );
+
+			m_Vec3 vec_to_light(
+					player_flashlight_pos.x - current_model_vertices[i].x,
+					player_flashlight_pos.y - current_model_vertices[i].y,
+					player_flashlight_pos.z - current_model_vertices[i].z );
+
+			float dot= vec_to_light * normal;
+
+			float dst2= vec_to_light * vec_to_light;
+			float dst= sqrtf(dst2);
+
+			float flashlight_dir_dot= ( vec_to_light * player_flashlight_dir ) / dst;
+			if(  flashlight_dir_dot < min_flashlight_cos )
+				continue;
+			if( dot > 0.0f )
+			{
+				float intensity= light_scaler * player_flashlight.intensity * dot / dst2;
+				int lights[3];
+				if(intensity>= 1.0f )
+				{
+					lights[0]= int(intensity* player_flashlight.color[0]) + current_model_vertex_lights[i].colored_light[0];
 					if( lights[0] > 255 ) lights[0]= 255;
-					lights[1]= int(intencity* model_lights[l].color[1]) + current_model_vertex_lights[i].colored_light[1];
+					lights[1]= int(intensity* player_flashlight.color[1]) + current_model_vertex_lights[i].colored_light[1];
 					if( lights[1] > 255 ) lights[1]= 255;
-					lights[2]= int(intencity* model_lights[l].color[2]) + current_model_vertex_lights[i].colored_light[2];
+					lights[2]= int(intensity* player_flashlight.color[2]) + current_model_vertex_lights[i].colored_light[2];
 					if( lights[2] > 255 ) lights[2]= 255;
 
 					current_model_vertex_lights[i].colored_light[0]= lights[0];
 					current_model_vertex_lights[i].colored_light[1]= lights[1];
 					current_model_vertex_lights[i].colored_light[2]= lights[2];
+				}
 
-				}//if dot > 0 
-			}//for lights
-		}//for vertices
+			}//if dot > 0 
+		}//flashlight*/
+
 	}//if default model lighting
 }
 
@@ -510,43 +564,50 @@ void GenerateBeamMesh( entity_t* ent )
 
 	
 	const int beam_cylinder_edges= 8;
-	const float cylinder_radius= 2.0f;
+	float cylinder_radius= 2.0f;
+	float direction_sign= 1.0f;
 	if( largest_component == 0 )
 	{
+		if( ent->origin[0] > ent->oldorigin[0] )
+			direction_sign= -1.0f;
 		for( int i= 0, j=0; i< beam_cylinder_edges; i++, j+=6 )
 		{
 			float a= 2.0f * 3.1415926535f * float(i)/float(beam_cylinder_edges);
 			beam_mesh[j  ]= ent->origin[0];
 			beam_mesh[j+1]= ent->origin[1] + cosf(a)*cylinder_radius;
-			beam_mesh[j+2]= ent->origin[2] + sinf(a)*cylinder_radius;
+			beam_mesh[j+2]= ent->origin[2] + sinf(a)*cylinder_radius * direction_sign;
 			beam_mesh[j+3]= ent->oldorigin[0];
 			beam_mesh[j+4]= ent->oldorigin[1] + cosf(a)*cylinder_radius;
-			beam_mesh[j+5]= ent->oldorigin[2] + sinf(a)*cylinder_radius;
+			beam_mesh[j+5]= ent->oldorigin[2] + sinf(a)*cylinder_radius * direction_sign;
 		}
 	}
 	else if( largest_component == 1 )
 	{
+		if( ent->origin[1] < ent->oldorigin[1] )
+			direction_sign= -1.0f;
 		for( int i= 0, j=0; i< beam_cylinder_edges; i++, j+=6 )
 		{
 			float a= 2.0f * 3.1415926535f * float(i)/float(beam_cylinder_edges);
 			beam_mesh[j  ]= ent->origin[0] + cosf(a)*cylinder_radius;
 			beam_mesh[j+1]= ent->origin[1];
-			beam_mesh[j+2]= ent->origin[2] + sinf(a)*cylinder_radius;
+			beam_mesh[j+2]= ent->origin[2] + sinf(a)*cylinder_radius * direction_sign;
 			beam_mesh[j+3]= ent->oldorigin[0] + cosf(a)*cylinder_radius;
 			beam_mesh[j+4]= ent->oldorigin[1];
-			beam_mesh[j+5]= ent->oldorigin[2] + sinf(a)*cylinder_radius;
+			beam_mesh[j+5]= ent->oldorigin[2] + sinf(a)*cylinder_radius * direction_sign;
 		}
 	}
 	else
 	{
+		if( ent->origin[2] < ent->oldorigin[2] )
+			direction_sign= -1.0f;
 		for( int i= 0, j=0; i< beam_cylinder_edges; i++, j+=6 )
 		{
 			float a= 2.0f * 3.1415926535f * float(i)/float(beam_cylinder_edges);
 			beam_mesh[j  ]= ent->origin[0] + sinf(a)*cylinder_radius;
-			beam_mesh[j+1]= ent->origin[1] + cosf(a)*cylinder_radius;
+			beam_mesh[j+1]= ent->origin[1] + cosf(a)*cylinder_radius * direction_sign;
 			beam_mesh[j+2]= ent->origin[2];
 			beam_mesh[j+3]= ent->oldorigin[0] + sinf(a)*cylinder_radius;
-			beam_mesh[j+4]= ent->oldorigin[1] + cosf(a)*cylinder_radius;
+			beam_mesh[j+4]= ent->oldorigin[1] + cosf(a)*cylinder_radius * direction_sign;
 			beam_mesh[j+5]= ent->oldorigin[2];
 		}
 	}

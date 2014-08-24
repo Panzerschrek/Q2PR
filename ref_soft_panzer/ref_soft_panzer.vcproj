@@ -641,6 +641,14 @@
 			<File
 				RelativePath=".\r_model_rendering.cpp"
 				>
+				<FileConfiguration
+					Name="Release Alpha|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						AssemblerOutput="4"
+					/>
+				</FileConfiguration>
 			</File>
 			<File
 				RelativePath=".\r_world_rendering.cpp"
@@ -654,7 +662,7 @@
 					>
 					<Tool
 						Name="VCCLCompilerTool"
-						AssemblerOutput="4"
+						AssemblerOutput="0"
 					/>
 				</FileConfiguration>
 			</File>

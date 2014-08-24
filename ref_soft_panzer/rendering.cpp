@@ -874,6 +874,22 @@ void DrawEntities(m_Mat4* mat, vec3_t cam_pos, bool alpha_entities )
 }
 
 
+void InitPlayerFlashlight()
+{
+	VectorCopy( r_newrefdef.vieworg, player_flashlight.origin );
+
+	player_flashlight.color[0]= player_flashlight.color[1]= player_flashlight.color[2]= 1.0f;
+	player_flashlight.intensity= 768.0f;
+
+	player_flashlight.cone_radius= 3.1415926535f / 24.0f;
+
+	const float to_rad = 3.1415926535f / 180.0f;
+	float a= (r_newrefdef.viewangles[1]  -180.0f )* to_rad;
+	float b= r_newrefdef.viewangles[0] * to_rad;
+	player_flashlight.direction[0]= cosf(a) * cosf(b);
+	player_flashlight.direction[1]= sinf(a) * cosf(b);
+	player_flashlight.direction[2]= sinf(b);
+}
 
 extern "C" void PANZER_RenderFrame(refdef_t *fd)
 {
@@ -891,6 +907,7 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 		r_newrefdef.num_dlights++;
 	}*/
 
+	InitPlayerFlashlight();
 	SetWorldFrame( int(r_newrefdef.time*2.0f) );
 
 	command_buffer.current_pos+= ComIn_ClearDepthBuffer( 

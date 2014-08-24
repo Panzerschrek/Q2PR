@@ -614,6 +614,8 @@ extern  entity_t                *currententity;
 extern  vec3_t  modelorg;
 extern  vec3_t  r_entorigin;
 
+extern flashlight_t player_flashlight;
+
 extern  float   verticalFieldOfView;
 extern  float   xOrigin, yOrigin;
 
