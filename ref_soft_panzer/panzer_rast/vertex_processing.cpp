@@ -499,6 +499,10 @@ int (*DrawWorldTriangleToBuffer)(char* buff)= VertexProcessing::DrawTriangleToBu
 int (*DrawWorldTriangleNoLightmapToBuffer)(char* buff)= VertexProcessing::DrawTriangleToBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_NEAREST, LIGHTING_NONE, ADDITIONAL_EFFECT_NONE >;
 
+
+int (*DrawBeamTriangleToBuffer)( char* buff )= VertexProcessing::DrawTriangleToBuffer
+< COLOR_CONSTANT, TEXTURE_NONE, LIGHTING_NONE, ADDITIONAL_EFFECT_NONE >;
+
 int (*DrawSkyTriangleToBuffer)( char* buff )= VertexProcessing::DrawTriangleToBuffer
 <COLOR_FROM_TEXTURE, TEXTURE_NEAREST, LIGHTING_NONE, ADDITIONAL_EFFECT_NONE>;
 

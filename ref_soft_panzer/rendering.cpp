@@ -20,6 +20,7 @@ extern "C" swstate_t sw_state;
 void DrawSpriteEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos );
 void DrawBrushEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos, bool is_aplha );
 void DrawAliasEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos );
+void DrawBeam( entity_t* ent, m_Mat4* mat, vec3_t cam_pos );
 /*
 ----command buffer-------
 */
@@ -857,9 +858,9 @@ void DrawEntities(m_Mat4* mat, vec3_t cam_pos, bool alpha_entities )
 		}
 
 		model= ent->model;
-		if(model==NULL)
-			continue;
-		if( model->type == mod_sprite )
+		if( (ent->flags&RF_BEAM) != 0 )
+			DrawBeam( ent, mat, cam_pos );
+		else if( model->type == mod_sprite )
 			DrawSpriteEntity( ent, mat, cam_pos );
 		else if( model->type == mod_brush )
 			DrawBrushEntity( ent, mat, cam_pos, alpha_entities );
@@ -882,10 +883,11 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 	{
 		dlight_t* light= r_newrefdef.dlights + r_newrefdef.num_dlights;
 		VectorCopy( fd->vieworg, light->origin );
-		light->intensity= 768.0f;
-		light->color[0]= 1.0f;
-		light->color[1]= 0.8f;
-		light->color[2]= 0.7f;
+		light->origin[0]+= 128.0f;
+		light->intensity= 256.0f;
+		light->color[0]= 0.3f;
+		light->color[1]= 0.5f;
+		light->color[2]= 1.0f;
 		r_newrefdef.num_dlights++;
 	}*/
 

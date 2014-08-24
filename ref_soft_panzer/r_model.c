@@ -369,13 +369,10 @@ void Mod_LoadLighting (lump_t *l)
 	}
 	else
 	{
-		
 		//PANZER old lightmap loading code, grayscale lightmaps
 		size = l->filelen/3;
 		loadmodel->lightdata = Hunk_Alloc (size);
 		in = (void *)(mod_base + l->fileofs);
-		//all lightmaps is in range [0;196]. Resize values to range [0;255]
-		//light_transfotm_k= 255*65536/196;
 		for (i=0 ; i<size ; i++, in+=3)
 		{
 			if (in[0] > in[1] && in[0] > in[2])
@@ -384,7 +381,6 @@ void Mod_LoadLighting (lump_t *l)
 				loadmodel->lightdata[i] = in[1];
 			else
 				loadmodel->lightdata[i] = in[2];
-			//loadmodel->lightdata[i]= (loadmodel->lightdata[i] * light_transfotm_k)>>16;
 		}
 	}
 

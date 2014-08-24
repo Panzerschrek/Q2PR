@@ -109,10 +109,21 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos, bool is_aplha
 	if( model->firstmodelsurface == 0)//HACK
 		return;
 
-	triangle_draw_func_t  near_draw_func= GetWorldNearDrawFunc(is_aplha);
-	triangle_draw_func_t  far_draw_func= GetWorldFarDrawFunc(is_aplha);
-	triangle_draw_func_t  near_draw_func_no_lightmap= GetWorldNearDrawFuncNoLightmaps(is_aplha, false);
-	triangle_draw_func_t  far_draw_func_no_lightmap= GetWorldFarDrawFuncNoLightmaps(is_aplha, false);
+	vec3_t cam_pos_model_space;
+	m_Mat4 inverse_entity_matrix;
+	CalcualteEntityReverseMatrix( ent, &inverse_entity_matrix );
+	//convert camera position to model space, to use backplane discarding
+	*((m_Vec3*)cam_pos_model_space)= *((m_Vec3*)cam_pos) * inverse_entity_matrix;
+
+	triangle_draw_func_t  near_draw_func= GetWorldNearDrawFunc(false);
+	triangle_draw_func_t  far_draw_func= GetWorldFarDrawFunc(false);
+	triangle_draw_func_t  near_draw_func_no_lightmap= GetWorldNearDrawFuncNoLightmaps(false);
+	triangle_draw_func_t  far_draw_func_no_lightmap= GetWorldFarDrawFuncNoLightmaps(false);
+
+	triangle_draw_func_t  near_draw_func_alpha= GetWorldNearDrawFunc(true);
+	triangle_draw_func_t  far_draw_func_alpha= GetWorldFarDrawFunc(true);
+	triangle_draw_func_t  near_draw_func_no_lightmap_alpha= GetWorldNearDrawFuncNoLightmaps(true);
+	triangle_draw_func_t  far_draw_func_no_lightmap_alpha= GetWorldFarDrawFuncNoLightmaps(true);
 
 
 	m_Mat4 entity_mat, result_mat;
@@ -125,15 +136,16 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos, bool is_aplha
 
 	for( i= 0, surf= model->surfaces + model->firstmodelsurface; i< model->nummodelsurfaces; i++, surf++ )
 	{
-		/*mplane_t* plane= surf->plane;
-		float dot= DotProduct(plane->normal, cam_pos) - plane->dist;
+		if( (surf->flags & (SURF_DRAWSKYBOX|SURF_DRAWBACKGROUND|SURF_DRAWSKY)) !=0 )
+			continue;
+
+		mplane_t* plane= surf->plane;
+		float dot= DotProduct(plane->normal, cam_pos_model_space) - plane->dist;
 		if( (surf->flags&SURF_PLANEBACK) != NULL )
 			dot= -dot;
 		if( dot <= 0.0f )
-			continue;*/
-
-		if( (surf->flags & (SURF_DRAWSKYBOX|SURF_DRAWBACKGROUND|SURF_DRAWSKY)) !=0 )
 			continue;
+
 		int img_num= ent->frame % surf->texinfo->numframes;
 		mtexinfo_t* texinfo= surf->texinfo;
 		while( img_num != 0 )
@@ -141,13 +153,17 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos, bool is_aplha
 			texinfo= texinfo->next;
 			img_num--;
 		}
-		if( (texinfo->flags&(SURF_NODRAW)) != 0 )
+		if( (texinfo->flags&SURF_NODRAW) != 0 )
 				continue;
 
 		bool no_lightmap= (surf->flags&SURF_DRAWTURB)!= 0 || (surf->texinfo->flags&SURF_WARP)!= 0;
+		bool trans_surface= (texinfo->flags&(SURF_TRANS66|SURF_TRANS33)) != 0;
 		if( no_lightmap )
 		{
-			int cur_triangles= DrawWorldSurface( surf, near_draw_func_no_lightmap, far_draw_func_no_lightmap, texinfo, 0 );
+			int cur_triangles= DrawWorldSurface( surf,
+				trans_surface ? near_draw_func_no_lightmap_alpha: near_draw_func_no_lightmap,
+				trans_surface ? far_draw_func_no_lightmap_alpha: far_draw_func_no_lightmap,
+				texinfo, 0 );
 			command_buffer.current_pos+= sizeof(int) + sizeof(DrawTriangleCall) + cur_triangles * 4 * sizeof(int)*5;
 		}
 		else
@@ -155,7 +171,10 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos, bool is_aplha
 			command_buffer.current_pos += 
 				ComIn_SetLightmap( command_buffer.current_pos + (char*)command_buffer.buffer,
 				L_GetSurfaceDynamicLightmap(surf), (surf->extents[0]>>4) + 1 );
-			int cur_triangles= DrawWorldSurface( surf, near_draw_func, far_draw_func, texinfo, 0 );
+			int cur_triangles= DrawWorldSurface( surf,
+				trans_surface ? near_draw_func_alpha : near_draw_func, 
+				trans_surface ? far_draw_func_alpha : far_draw_func,
+				texinfo, 0 );
 			command_buffer.current_pos+= sizeof(int) + sizeof(DrawTriangleCall) + cur_triangles * 4 * sizeof(int)*7;
 		}
 	}
@@ -286,7 +305,7 @@ void CalculateModelLights( entity_t* ent )
 					float dst= sqrtf(dst2);
 					if( dst > model_lights[l].intensity )//light source to far
 						continue;
-					const float light_scaler= 0.33f;
+					const float light_scaler= 0.5f;
 					float intencity= light_scaler * model_lights[l].intensity * dot / dst;
 
 					int lights[3];
@@ -343,6 +362,12 @@ triangle_draw_func_t GetModelDrawFunc( entity_t* ent )
 
 void DrawAliasEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 {
+	if( (ent->flags&RF_WEAPONMODEL) != 0 )
+	{
+		if( r_lefthand->value != 0 && r_lefthand->value != 1 )
+			return;
+	}
+
 	float width_f= float(vid.width) * 65536.0f;
 	float height_f= float(vid.height) * 65536.0f;
 	float width2_f= width_f * 0.5f;
@@ -358,9 +383,18 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 	if( !is_fullbright )
 		CalculateModelLights( ent );
 
-	m_Mat4 entity_mat, result_mat;
+	m_Mat4 entity_mat, result_mat, hand_mat;
 	CalculateEntityMatrix( ent, &entity_mat );
 	result_mat= entity_mat * *mat;
+	if( (ent->flags&RF_WEAPONMODEL) != 0 )
+	{
+		if( r_lefthand->value == 1 )
+		{
+			hand_mat.Identity();
+			hand_mat[0]*= -1.0f;
+			result_mat= result_mat * hand_mat;
+		}
+	}
 
 	char* buff= (char*) command_buffer.buffer;
 	buff+= command_buffer.current_pos;
@@ -449,4 +483,163 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 
 	command_buffer.current_pos+= buff- buff0;
 
+}
+
+
+
+#define MAX_BEAM_VERTICES 96
+#define MAX_BEAM_TRIANGLES 96
+static float beam_mesh[ MAX_BEAM_VERTICES ];
+static int beam_indeces[ MAX_BEAM_TRIANGLES ];
+static int beam_mesh_triangle_count;
+
+
+void GenerateBeamMesh( entity_t* ent )
+{
+	m_Vec3 beam_vec( ent->origin[0] - ent->oldorigin[0], ent->origin[1] - ent->oldorigin[1], ent->origin[2] - ent->oldorigin[2] );
+
+	int largest_component= 0;
+	float larges_component_len= fabsf(beam_vec.x);
+	if(larges_component_len < fabsf(beam_vec.y) )
+	{
+		larges_component_len= fabsf(beam_vec.y);
+		largest_component= 1;
+	}
+	if(larges_component_len < fabsf(beam_vec.z) )
+		largest_component= 2;
+
+	
+	const int beam_cylinder_edges= 8;
+	const float cylinder_radius= 2.0f;
+	if( largest_component == 0 )
+	{
+		for( int i= 0, j=0; i< beam_cylinder_edges; i++, j+=6 )
+		{
+			float a= 2.0f * 3.1415926535f * float(i)/float(beam_cylinder_edges);
+			beam_mesh[j  ]= ent->origin[0];
+			beam_mesh[j+1]= ent->origin[1] + cosf(a)*cylinder_radius;
+			beam_mesh[j+2]= ent->origin[2] + sinf(a)*cylinder_radius;
+			beam_mesh[j+3]= ent->oldorigin[0];
+			beam_mesh[j+4]= ent->oldorigin[1] + cosf(a)*cylinder_radius;
+			beam_mesh[j+5]= ent->oldorigin[2] + sinf(a)*cylinder_radius;
+		}
+	}
+	else if( largest_component == 1 )
+	{
+		for( int i= 0, j=0; i< beam_cylinder_edges; i++, j+=6 )
+		{
+			float a= 2.0f * 3.1415926535f * float(i)/float(beam_cylinder_edges);
+			beam_mesh[j  ]= ent->origin[0] + cosf(a)*cylinder_radius;
+			beam_mesh[j+1]= ent->origin[1];
+			beam_mesh[j+2]= ent->origin[2] + sinf(a)*cylinder_radius;
+			beam_mesh[j+3]= ent->oldorigin[0] + cosf(a)*cylinder_radius;
+			beam_mesh[j+4]= ent->oldorigin[1];
+			beam_mesh[j+5]= ent->oldorigin[2] + sinf(a)*cylinder_radius;
+		}
+	}
+	else
+	{
+		for( int i= 0, j=0; i< beam_cylinder_edges; i++, j+=6 )
+		{
+			float a= 2.0f * 3.1415926535f * float(i)/float(beam_cylinder_edges);
+			beam_mesh[j  ]= ent->origin[0] + sinf(a)*cylinder_radius;
+			beam_mesh[j+1]= ent->origin[1] + cosf(a)*cylinder_radius;
+			beam_mesh[j+2]= ent->origin[2];
+			beam_mesh[j+3]= ent->oldorigin[0] + sinf(a)*cylinder_radius;
+			beam_mesh[j+4]= ent->oldorigin[1] + cosf(a)*cylinder_radius;
+			beam_mesh[j+5]= ent->oldorigin[2];
+		}
+	}
+	beam_mesh_triangle_count= beam_cylinder_edges * 2;
+
+	for( int i= 0, j=0; i< beam_cylinder_edges; i++, j+=6 )
+	{
+		beam_indeces[j+0]= i*2+3;
+		beam_indeces[j+1]= i*2+2;
+		beam_indeces[j+2]= i*2+0;
+		beam_indeces[j+3]= i*2+1;
+		beam_indeces[j+4]= i*2+3;
+		beam_indeces[j+5]= i*2+0;
+	}
+	int j= beam_cylinder_edges*6-6;
+	beam_indeces[j+0]= 1;
+	beam_indeces[j+1]= 0;
+	//beam_indeces[j+2]= i*2+0;
+	//beam_indeces[j+3]= i*2+1;
+	beam_indeces[j+4]= 1;
+	//beam_indeces[j+5]= i*2+0;
+}
+
+void DrawBeam( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
+{
+	
+	float width_f= float(vid.width) * 65536.0f;
+	float height_f= float(vid.height) * 65536.0f;
+	float width2_f= width_f * 0.5f;
+	float height2_f= height_f * 0.5f;
+
+	GenerateBeamMesh(ent);
+	
+	char* buff= (char*) command_buffer.buffer;
+	buff+= command_buffer.current_pos;
+	char* buff0= buff;
+
+	unsigned char color[4];
+	*((int*)color)= d_8to24table[ ent->skinnum&255 ];
+	buff+= ComIn_SetConstantColor( buff, color );
+
+	*((int*)buff)= COMMAND_DRAW_TRIANGLE;
+	buff+= sizeof(int);
+	DrawTriangleCall* call= (DrawTriangleCall*)buff;
+	call->DrawFromBufferFunc= DrawBeamTriangle;
+	call->triangle_count= 0;
+	call->vertex_size= sizeof(int)*3;
+	buff+= sizeof(DrawTriangleCall);
+
+	for( int i= 0; i< beam_mesh_triangle_count; i++ )
+	{
+		m_Vec3 pos[3];
+		for(int j= 0; j< 3; j++ )
+		{
+			pos[j]= *((m_Vec3*)(beam_mesh + beam_indeces[i*3+j]*3)) * *mat;
+		}
+		if( pos[0].z <= PSR_MIN_ZMIN_FLOAT || pos[1].z <= PSR_MIN_ZMIN_FLOAT || pos[2].z <= PSR_MIN_ZMIN_FLOAT )
+			continue;
+
+		for(int j= 0; j< 3; j++ )
+		{
+			float inv_z= 1.0f / pos[j].z;
+			pos[j].x= ( pos[j].x * inv_z + 1.0f ) * width2_f;
+			pos[j].y= ( pos[j].y * inv_z + 1.0f ) * height2_f;
+		}
+		if( pos[0].x < 0.0f || pos[0].x > width_f || pos[0].y < 0.0f || pos[0].y > height_f )
+			continue;
+		if( pos[1].x < 0.0f || pos[1].x > width_f || pos[1].y < 0.0f || pos[1].y > height_f )
+			continue;
+		if( pos[2].x < 0.0f || pos[2].x > width_f || pos[2].y < 0.0f || pos[2].y > height_f )
+			continue;
+		//bak face culling
+		float v[4]= { pos[2].x - pos[1].x, pos[2].y - pos[1].y, pos[1].x - pos[0].x, pos[1].y - pos[0].y };
+		if( v[0] * v[3] - v[2] * v[1] < 1.0f )
+			continue;
+
+		using namespace VertexProcessing;
+		triangle_in_vertex_xy[0]= fixed16_t(pos[0].x);
+		triangle_in_vertex_xy[1]= fixed16_t(pos[0].y);
+		triangle_in_vertex_xy[2]= fixed16_t(pos[1].x);
+		triangle_in_vertex_xy[3]= fixed16_t(pos[1].y);
+		triangle_in_vertex_xy[4]= fixed16_t(pos[2].x);
+		triangle_in_vertex_xy[5]= fixed16_t(pos[2].y);
+		triangle_in_vertex_z[0]= fixed16_t(pos[0].z*65536.0f);
+		triangle_in_vertex_z[1]= fixed16_t(pos[1].z*65536.0f);
+		triangle_in_vertex_z[2]= fixed16_t(pos[2].z*65536.0f);
+
+		if( DrawBeamTriangleToBuffer(buff)!= 0 )
+		{
+			buff+= 4 * call->vertex_size;
+			call->triangle_count++;
+		}
+	}//for triangles
+
+	command_buffer.current_pos+= buff - buff0;
 }

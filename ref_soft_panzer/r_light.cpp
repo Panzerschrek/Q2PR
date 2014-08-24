@@ -408,16 +408,25 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 			/*for (maps = 0 ; maps < MAXLIGHTMAPS && surf->styles[maps] != 255 ;
 					maps++)
 			{
-				scales = r_newrefdef.lightstyles[surf->styles[maps]].rgb;
-				float swapped_scales[3]= { scales[0], scales[1], scales[2] };
-				ColorFloatSwap( swapped_scales );
-				float light_scaler= 1.0f / 255.0f;
-				if( lightmap[3] != 0 )
-					light_scaler*= float(lightmap[3]) * (1.0f/255.0f);//convertion from rgbs
-				pointcolor[0]+= float(lightmap[0])* light_scaler * swapped_scales[0];
-				pointcolor[1]+= float(lightmap[1])* light_scaler * swapped_scales[1];
-				pointcolor[2]+= float(lightmap[2])* light_scaler * swapped_scales[2];
-
+				if( is_colored_lightmap )
+				{
+					scales = r_newrefdef.lightstyles[surf->styles[maps]].rgb;
+					float swapped_scales[3]= { scales[0], scales[1], scales[2] };
+					ColorFloatSwap( swapped_scales );
+					float light_scaler= 1.0f / 255.0f;
+					if( lightmap[3] != 0 )
+						light_scaler*= float(lightmap[3]) * (1.0f/255.0f);//convertion from rgbs
+					pointcolor[0]+= float(lightmap[0])* light_scaler * swapped_scales[0];
+					pointcolor[1]+= float(lightmap[1])* light_scaler * swapped_scales[1];
+					pointcolor[2]+= float(lightmap[2])* light_scaler * swapped_scales[2];
+				}
+				else
+				{
+					float l= float(lightmap[0]) * r_newrefdef.lightstyles[surf->styles[maps]].white / 255.0f;
+					pointcolor[0]+= l;
+					pointcolor[1]+= l;
+					pointcolor[2]+= l;
+				}
 				lightmap+= ( ((surf->extents[0]>>4)+1) * ((surf->extents[1]>>4)+1) ) * lightmap_size;
 			}*/
 			//take first lightmap only (temporary)

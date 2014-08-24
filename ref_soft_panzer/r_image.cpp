@@ -9,9 +9,27 @@ extern "C" void R_LoadWal (char *name, image_t* image );
 
 #define	MAX_RIMAGES	1024
 image_t		r_images[MAX_RIMAGES];
+image_t		white_image;
 Texture textures[MAX_RIMAGES];
+Texture		white_texture;
 int			numr_images;
 
+void InitWhiteImage()
+{
+	white_image.height= 4;
+	white_image.width= 4;
+	white_image.pixels[0]= (byte*) malloc(4*4);
+
+	static const unsigned char white_img_data[]=
+	{
+		255,255,255,255, 255,255,255,255, 255,255,255,255, 255,255,255,255,
+		255,255,255,255, 255,255,255,255, 255,255,255,255, 255,255,255,255,
+		255,255,255,255, 255,255,255,255, 255,255,255,255, 255,255,255,255,
+		255,255,255,255, 255,255,255,255, 255,255,255,255, 255,255,255,255
+	};
+
+	white_texture.Create( 4, 4, false, NULL, white_img_data, false );
+}
 
 
 image_t* R_FindFreeImage()
@@ -36,7 +54,7 @@ Texture* R_FindTexture(image_t* image)
 	int i= image - r_images;
 	if( i >=0 && i< MAX_RIMAGES )
 		return textures + i;
-	return NULL;
+	return &white_texture;
 }
 
 Texture* R_FindTexture( char* name )
@@ -48,7 +66,7 @@ Texture* R_FindTexture( char* name )
 			return textures + i;
 		}
 
-	return NULL;
+	return &white_texture;
 }
 
 int R_GetImageIndex(image_t* image)
@@ -61,15 +79,6 @@ int R_GetImageIndex(image_t* image)
 	return i;
 }
 
-
-int SwapRedBlue( int c )
-{
-	unsigned char* cc= (unsigned char*)&c;
-	unsigned char tmp= cc[0];
-	cc[0]= cc[2];
-	cc[2]= tmp;
-	return c;
-}
 
 extern "C" image_t	*R_FindImage (char *name, imagetype_t type)
 {
@@ -88,7 +97,7 @@ extern "C" image_t	*R_FindImage (char *name, imagetype_t type)
 	if ( !strcmp(name+len-4, ".tga") )
 	{
 		need_resize_to_pot= true;
-		need_convert_to_rgba= true;
+		need_convert_to_rgba= false;
 	}
 	else if ( !strcmp(name+len-4, ".pcx") )
 	{

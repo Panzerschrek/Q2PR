@@ -130,17 +130,9 @@ extern void (*DrawModelTriangleTextureLinearBlend)( char* buff );
 extern void (*DrawModelTriangleTextureFakeFilterBlend)( char* buff );
 
 
-//for model drawing
-extern int (*DrawMonoLightedTexturedTriangleToBuffer)( char* buff );
-extern void (*DrawMonoLightedTexturedTriangleFromBuffer)( char* buff );
-
-//more cooler model drawing
-extern int (*DrawVertexLightedTexturedTriangleToBuffer)( char* buff );
-extern void (*DrawVertexLightedTexturedTriangleFromBuffer)( char* buff );
-
-//main map triangles draw functions
-extern int(*DrawGrayscaleLightmappedTexturedTriangleToBuffer)(char* buff );
-extern void(*DrawGrayscaleLightmappedTexturedTriangleFromBuffer)(char* buff );
+//for beams ( map lasers, bfg )
+extern int  (*DrawBeamTriangleToBuffer)( char* buff );
+extern void (*DrawBeamTriangle)( char* buff );
 
 //in\out sprite drawing functions
 extern void (*DrawParticleSpriteToBuffer)( char* buff, int x0, int y0, int x1, int y1, fixed16_t depth );

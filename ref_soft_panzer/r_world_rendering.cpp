@@ -111,6 +111,7 @@ triangle_draw_func_t world_triangles_turbulence_draw_funcs_table[]=
 	DrawWorldTriangleTextureFakeFilterPalettizedTurbulenceBlend
 };
 
+/*
 triangle_draw_func_t world_triangles_no_lightmap_draw_funcs_table[]=
 {
 	DrawWorldTriangleTextureNearest,
@@ -126,7 +127,7 @@ triangle_draw_func_t world_triangles_no_lightmap_draw_funcs_table[]=
 	DrawWorldTriangleTextureNearestPalettizedBlend,
 	DrawWorldTriangleTextureLinearPalettizedBlend,
 	DrawWorldTriangleTextureFakeFilterPalettizedBlend
-};
+};*/
 
 triangle_draw_func_t GetWorldDrawFunc( int texture_mode, bool is_blending )
 {
@@ -171,7 +172,7 @@ triangle_draw_func_t GetWorldFarDrawFunc( bool is_alpha )
 }
 
 
-triangle_draw_func_t GetWorldNearDrawFuncNoLightmaps( bool is_alpha, bool is_turbulence )
+triangle_draw_func_t GetWorldNearDrawFuncNoLightmaps( bool is_alpha )
 {
 	int x, y;
 	if( strcmp( r_texture_mode->string, "texture_linear" ) == 0 )
@@ -190,7 +191,7 @@ triangle_draw_func_t GetWorldNearDrawFuncNoLightmaps( bool is_alpha, bool is_tur
 	return world_triangles_turbulence_draw_funcs_table[ x + y*3 ];
 }
 
-triangle_draw_func_t GetWorldFarDrawFuncNoLightmaps( bool is_alpha, bool is_turbulence )
+triangle_draw_func_t GetWorldFarDrawFuncNoLightmaps( bool is_alpha )
 {
 	/*if(is_alpha)
 	{
@@ -298,7 +299,7 @@ int DrawWorldSurface( msurface_t* surf, triangle_draw_func_t near_draw_func, tri
 			tc_u[e]+= tc_delta;
 	}
 
-	//select and texture
+	//select texture and mip level
 	int mip_level= GetSurfaceMipLevel( surf );
 	Texture* tex= R_FindTexture( texinfo->image );
 	if( mip_level > 3 ) mip_level= 3;
@@ -389,8 +390,8 @@ void DrawWorldAlphaSurfaces()
 {
 	triangle_draw_func_t  near_draw_func= GetWorldNearDrawFunc(true);
 	triangle_draw_func_t  far_draw_func= GetWorldFarDrawFunc(true);
-	triangle_draw_func_t  near_draw_func_no_lightmap= GetWorldNearDrawFuncNoLightmaps(true, false);
-	triangle_draw_func_t  far_draw_func_no_lightmap= GetWorldFarDrawFuncNoLightmaps(true, false);
+	triangle_draw_func_t  near_draw_func_no_lightmap= GetWorldNearDrawFuncNoLightmaps(true);
+	triangle_draw_func_t  far_draw_func_no_lightmap= GetWorldFarDrawFuncNoLightmaps(true);
 
 	msurface_t* surf= alpha_surfaces_chain.first_surface;
 	int surf_cout= alpha_surfaces_chain.surf_count;
@@ -456,10 +457,8 @@ void DrawWorldTextureChains()
 
 	triangle_draw_func_t  near_draw_func= GetWorldNearDrawFunc(false);
 	triangle_draw_func_t  far_draw_func= GetWorldFarDrawFunc(false);
-	triangle_draw_func_t  near_draw_func_no_lightmap= GetWorldNearDrawFuncNoLightmaps(false, false);
-	triangle_draw_func_t  far_draw_func_no_lightmap= GetWorldFarDrawFuncNoLightmaps(false, false);
-	triangle_draw_func_t  near_draw_func_turbulence= GetWorldNearDrawFuncNoLightmaps(false, true);
-	triangle_draw_func_t  far_draw_func_turbulence= GetWorldFarDrawFuncNoLightmaps(false, true);
+	triangle_draw_func_t  near_draw_func_no_lightmap= GetWorldNearDrawFuncNoLightmaps(false);
+	triangle_draw_func_t  far_draw_func_no_lightmap= GetWorldFarDrawFuncNoLightmaps(false);
 
 	int triangle_count= 0, face_count= 0;
 	for( int i= 0; i< MAX_RIMAGES; i++ )

@@ -275,6 +275,10 @@ void Draw_BuildGammaTable (void)
 
 
 
+void R_Flashlight_f(void)
+{
+}
+
 void PANZER_Register (void)
 {
 	sw_aliasstats = ri.Cvar_Get ("sw_polymodelstats", "0", 0);
@@ -312,9 +316,9 @@ void PANZER_Register (void)
 	r_texture_mode= ri.Cvar_Get( "r_texture_mode", "texture_nearest", CVAR_ARCHIVE ); r_texture_mode->modified= false;
 	r_use_multithreading= ri.Cvar_Get( "r_use_multithreading", "0", CVAR_ARCHIVE ); r_use_multithreading->modified= false;
 	r_palettized_textures= ri.Cvar_Get( "r_palettized_textures", "0", CVAR_ARCHIVE ); r_palettized_textures->modified= false;
-	//ri.Cmd_AddCommand ("modellist", Mod_Modellist_f);
-	//ri.Cmd_AddCommand( "screenshot", R_ScreenShot_f );
-	//ri.Cmd_AddCommand( "imagelist", R_ImageList_f );
+
+	ri.Cmd_AddCommand( "flashlight", R_Flashlight_f );
+	ri.Cmd_ExecuteText( 0, "bind f flashlight" );
 
 	sw_mode->modified = true; // force us to do mode specific stuff later
 	vid_gamma->modified = true; // force us to rebuild the gamma table later
@@ -325,11 +329,11 @@ void PANZER_Register (void)
 
 }
 
+
+
 void R_UnRegister (void)
 {
-	ri.Cmd_RemoveCommand( "screenshot" );
-	ri.Cmd_RemoveCommand ("modellist");
-	ri.Cmd_RemoveCommand( "imagelist" );
+	ri.Cmd_RemoveCommand( "flashlight" );
 }
 
 
@@ -511,7 +515,7 @@ void PANZER_BeginFrame( float camera_separation )
 		r_palettized_textures->modified= false;
 		ri.Cmd_ExecuteText( 0, "vid_restart" );
 	}
-	if( sw_mode->modified )
+	if( sw_mode->modified || vid_fullscreen->modified )
 	{
 		PR_LockFramebuffer();
 
@@ -519,10 +523,16 @@ void PANZER_BeginFrame( float camera_separation )
 		PRast_Init( vid.width, vid.height );//init framebuffers and depth buffer 
 		PR_SetFrameBuffeer( vid.buffer );
 		if( (((int)vid.buffer)&0xF) != 0 )
-			ri.Con_Printf( 0, "warning, unaligned framebuffer: 0x%X\n", vid.buffer );
+			ri.Con_Printf( PRINT_ALL, "warning, unaligned framebuffer: 0x%X\n", vid.buffer );
+		else if ( (((int)vid.buffer)&7) != 0 )
+			ri.Con_Printf( PRINT_ALL, "warning, FATAL unaligned framebuffer: 0x%X\n", vid.buffer );
+		else
+			ri.Con_Printf( PRINT_ALL, "all ok, framebuffer aligned: 0x%X\n", vid.buffer );
 		sw_mode->modified = false;
 
 		PR_UnlockFramebuffer();
+
+		vid_fullscreen->modified= false;
 	}
 	if( vid_gamma->modified )
 	{

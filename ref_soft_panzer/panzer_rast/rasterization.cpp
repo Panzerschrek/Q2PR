@@ -2658,7 +2658,7 @@ void (*DrawWorldTriangleTextureLinearPalettizedTurbulenceBlend)(char*buff)= Draw
 void (*DrawWorldTriangleTextureFakeFilterPalettizedTurbulenceBlend)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_TURBULENCE, DEPTH_TEST_LESS, true >;
 
-
+/* - no lightmaps and with turbulence - do not neeed it
 //world rendering functions without lightmaps
 void (*DrawWorldTriangleTextureNearest)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
@@ -2688,7 +2688,7 @@ void (*DrawWorldTriangleTextureLinearPalettizedBlend)(char*buff)= Draw::DrawTria
 < COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawWorldTriangleTextureFakeFilterPalettizedBlend)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
-
+*/
 
 
 //colored models
@@ -2721,6 +2721,9 @@ void (*DrawModelTriangleTextureFakeFilterBlend)( char* buff )= Draw::DrawTriangl
 < COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_CONSTANT, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 
 
+void (*DrawBeamTriangle)( char* buff )= Draw::DrawTriangleFromBuffer
+< COLOR_CONSTANT, TEXTURE_NONE, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+
 void (*DrawParticleSprite)(int x0, int y0, int x1, int y1, fixed16_t depth)= Draw::DrawSprite
 < TEXTURE_NONE, BLENDING_CONSTANT, ALPHA_TEST_NONE, LIGHTING_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawParticleSpriteNoBlend)(int x0, int y0, int x1, int y1, fixed16_t depth)= Draw::DrawSprite
@@ -2731,6 +2734,7 @@ void (*DrawSkyTriangleFromBuffer)( char* buff ) = Draw::DrawTriangleFromBuffer
 
 void (*DrawWorldSprite)(int x0, int y0, int x1, int y1, fixed16_t depth) =
 Draw::DrawSprite<TEXTURE_NEAREST, BLENDING_AVG, ALPHA_TEST_DISCARD_GREATER_HALF, LIGHTING_NONE, DEPTH_TEST_LESS, true >;
+
 
 void (*DrawTextureRGBA)( int x, int y)= Draw::DrawTexture< TEXTURE_NEAREST >;
 void (*DrawTexturePalettized)( int x, int y)= Draw::DrawTexture< TEXTURE_PALETTIZED_NEAREST >;
