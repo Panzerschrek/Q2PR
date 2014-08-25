@@ -913,12 +913,11 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 	command_buffer.current_pos+= ComIn_ClearDepthBuffer( 
 		(char*)command_buffer.buffer + command_buffer.current_pos, 0xFFFF );
 
-	if( is_any_sky )
+	if( (fd->rdflags&RDF_NOWORLDMODEL) == 0 )
 	{
-		unsigned char clear_color[]= { 0, 0, 0, 0 };
+		unsigned char clear_color[]= { 240, 32, 250, 0 };
 		command_buffer.current_pos+= ComIn_ClearColorBuffer(
 			(char*)command_buffer.buffer + command_buffer.current_pos, clear_color );
-
 
 		command_buffer.current_pos+= ComIn_SetTexturePaletteRaw(
 			(char*)command_buffer.buffer + command_buffer.current_pos, (unsigned char*)d_8to24table );

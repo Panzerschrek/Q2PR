@@ -929,8 +929,8 @@ enum DepthTestMode depth_test_mode,
 bool write_depth >
 void DrawTriangleUp()
 {
-    int y_begin= FastIntClampToZero( Fixed16CeilToInt(triangle_in_vertex_xy[3]) );
-    int y_end= FastIntMin( screen_size_y-1, Fixed16FloorToInt(triangle_in_vertex_xy[1]) );
+	int y_begin= FastIntClampToZero( (triangle_in_vertex_xy[3]>>16)+1 );
+    int y_end= FastIntMin( screen_size_y-1, triangle_in_vertex_xy[1]>>16 );
 
     fixed16_t x_left, x_right, dx_left, dx_right;
     fixed16_t color_left[4], d_color_left[4];
@@ -947,12 +947,17 @@ void DrawTriangleUp()
 
     {
 		fixed16_t dy= triangle_in_vertex_xy[1] - triangle_in_vertex_xy[3];// triangle height
+		if( dy < 4096 ) dy= 4096;
         fixed16_t dx= triangle_in_vertex_xy[4] - triangle_in_vertex_xy[2];// triangle width
 		fixed16_t ddy= (y_begin<<16) - triangle_in_vertex_xy[3];// distance between triangle begin and lower screen border
 		dx_left= Fixed16Div( triangle_in_vertex_xy[0] - triangle_in_vertex_xy[2], dy );
 		x_left= triangle_in_vertex_xy[2] + Fixed16Mul( ddy, dx_left );
 		dx_right= Fixed16Div( triangle_in_vertex_xy[0] - triangle_in_vertex_xy[4], dy );
         x_right= triangle_in_vertex_xy[4] + Fixed16Mul( ddy, dx_right );
+		if( dx < 16384 )//dx is small, delta values nothing
+			dx= 16384<<16;
+		if( dy < 16384 )
+			dy= 16384<<16;
 
         fixed16_t inv_vertex_z[3];
         for( int i= 0; i< 3; i++ )
@@ -994,9 +999,9 @@ void DrawTriangleUp()
 		{
 			 for( int i= 0; i< 3; i++ )
             {
-				color_left[i]= (triangle_in_color[i+4]) * inv_vertex_z[1];
-                d_color_left[i]= Fixed16Div( triangle_in_color[i] * inv_vertex_z[0] - color_left[i], dy );
-                d_line_color[i]= Fixed16Div( triangle_in_color[i+8] * inv_vertex_z[2] - color_left[i], dx );
+				color_left[i]= (3*triangle_in_color[i+4]) * inv_vertex_z[1];
+                d_color_left[i]= Fixed16Div( 3*triangle_in_color[i] * inv_vertex_z[0] - color_left[i], dy );
+                d_line_color[i]= Fixed16Div( 3*triangle_in_color[i+8] * inv_vertex_z[2] - color_left[i], dx );
                 color_left[i]+= Fixed16Mul( ddy, d_color_left[i] );
             }
 		}
@@ -1072,8 +1077,8 @@ void DrawTriangleUp()
 
     for( int y= y_begin; y<= y_end; y++, x_left+= dx_left, x_right+= dx_right )//scan lines
     {
-        int x_begin= FastIntClampToZero( Fixed16CeilToInt(x_left) );
-        int x_end= FastIntMin( screen_size_x-1, Fixed16FloorToInt(x_right) );
+		int x_begin= FastIntClampToZero( (x_left>>16)+1 );
+        int x_end= FastIntMin( screen_size_x-1, x_right>>16 );
 
         int s= x_begin + screen_size_x * y;
         depth_buffer_t* depth_p= depth_buffer + s;
@@ -1135,7 +1140,9 @@ void DrawTriangleUp()
 			//fixed16_t final_z= Fixed16Invert( FastIntMax( line_inv_z >> PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2, 65536/PSR_MIN_ZMIN ) );
 #endif
             //scale z to convert to depth buffer format
-            depth_buffer_t depth_z= final_z >> PSR_DEPTH_SCALER_LOG2;
+			depth_buffer_t depth_z;
+			if( additional_effect_mode == ADDITIONAL_EFFECT_DEPTH_HACK ) depth_z= final_z >> (PSR_DEPTH_SCALER_LOG2+PSR_DEPTH_HACK_SCALER);
+			else depth_z= final_z >> PSR_DEPTH_SCALER_LOG2;
             if( depth_test_mode != DEPTH_TEST_NONE )
             {
                 if( depth_test_mode == DEPTH_TEST_LESS )
@@ -1193,7 +1200,7 @@ void DrawTriangleUp()
 					const static int shift_table[]= { 16384,0, 32768,49152, 49152,32768, 0,16384 };
 					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
 					{
-						int ind= (x&1)+((y&1)<<1);
+						int ind= (x&1)|((y&1)<<1);
 						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
 						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
 						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
@@ -1204,7 +1211,7 @@ void DrawTriangleUp()
 					}
 					else
 					{
-						int ind= (x&1)+((y&1)<<1);
+						int ind= (x&1)|((y&1)<<1);
 						int uu= shift_table[ind+1];
 						int vv= shift_table[ind];
 						TexelFetchNearest( ( Fixed16Mul( line_tc[0], final_z ) + uu )>> 16,
@@ -1289,9 +1296,9 @@ void DrawTriangleUp()
 			else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
             {
 				int final_light[3];
-				final_light[0]= 3*Fixed16MulResultToInt( line_color[0], final_z );
-				final_light[1]= 3*Fixed16MulResultToInt( line_color[1], final_z );
-				final_light[2]= 3*Fixed16MulResultToInt( line_color[2], final_z );
+				final_light[0]= Fixed16MulResultToInt( line_color[0], final_z );
+				final_light[1]= Fixed16MulResultToInt( line_color[1], final_z );
+				final_light[2]= Fixed16MulResultToInt( line_color[2], final_z );
                 color[0]= FastIntUByteMulClamp255( final_light[0], color[0] );
                 color[1]= FastIntUByteMulClamp255( final_light[1], color[1] );
                 color[2]= FastIntUByteMulClamp255( final_light[2], color[2] );
@@ -1347,6 +1354,7 @@ void DrawTriangleUp()
                     pixels[0]= ( pixels[0] + color[0] )>>1;
                     pixels[1]= ( pixels[1] + color[1] )>>1;
                     pixels[2]= ( pixels[2] + color[2] )>>1;
+					//*((int*)pixels)= (((*((int*)pixels))>>1)&0x7f7f7f7f) + (((*((int*)color))>>1)&0x7f7f7f7f);
                 }
                 else if( blending_mode == BLENDING_SRC_ALPHA )
                 {
@@ -1491,8 +1499,8 @@ enum DepthTestMode depth_test_mode,
 bool write_depth >
 void DrawTriangleDown()
 {
-    int y_begin= FastIntClampToZero( Fixed16CeilToInt(triangle_in_vertex_xy[1]) );
-    int y_end= FastIntMin( screen_size_y-1, Fixed16FloorToInt(triangle_in_vertex_xy[3]) );
+	int y_begin= FastIntClampToZero( (triangle_in_vertex_xy[1]>>16)+1 );
+    int y_end= FastIntMin( screen_size_y-1, triangle_in_vertex_xy[3]>>16 );
 
     fixed16_t x_left, x_right, dx_left, dx_right;
     fixed16_t color_left[4], d_color_left[4];
@@ -1509,13 +1517,18 @@ void DrawTriangleDown()
 
     {
 		fixed16_t dy= triangle_in_vertex_xy[3] - triangle_in_vertex_xy[1];// triangle height
+		if( dy < 4096 ) dy= 4096;
         fixed16_t dx= triangle_in_vertex_xy[4] - triangle_in_vertex_xy[2];// triangle width
 		fixed16_t ddy= (y_begin<<16) - triangle_in_vertex_xy[1];// distance between triangle begin and lower screen border
 		dx_left= Fixed16Div( triangle_in_vertex_xy[2] - triangle_in_vertex_xy[0], dy );
         x_left= triangle_in_vertex_xy[0] + Fixed16Mul( ddy, dx_left );
 		dx_right= Fixed16Div( triangle_in_vertex_xy[4] - triangle_in_vertex_xy[0], dy );
         x_right= triangle_in_vertex_xy[0] + Fixed16Mul( ddy, dx_right );
-
+		if( dx < 16384 )//dx is small, delta values nothing
+			dx= 16384<<16;
+		if( dy < 16384 )
+			dy= 16384<<16;
+			
         fixed16_t inv_vertex_z[3];
        for( int i= 0; i< 3; i++ )
 		{
@@ -1554,9 +1567,9 @@ void DrawTriangleDown()
 		{
 			for( int i= 0; i< 3; i++ )
             {
-				color_left[i]= triangle_in_color[i] * inv_vertex_z[0];
-                d_color_left[i]= Fixed16Div( triangle_in_color[i+4] * inv_vertex_z[1] - color_left[i], dy );
-                d_line_color[i]= Fixed16Div( triangle_in_color[i+8] * inv_vertex_z[2] - triangle_in_color[i+4] * inv_vertex_z[1], dx );
+				color_left[i]= 3*triangle_in_color[i] * inv_vertex_z[0];
+                d_color_left[i]= Fixed16Div( 3*triangle_in_color[i+4] * inv_vertex_z[1] - color_left[i], dy );
+                d_line_color[i]= Fixed16Div( 3*( triangle_in_color[i+8] * inv_vertex_z[2] - triangle_in_color[i+4] * inv_vertex_z[1] ), dx );
                 color_left[i]+= Fixed16Mul( ddy, d_color_left[i] );
             }
 		}
@@ -1633,8 +1646,9 @@ void DrawTriangleDown()
 
     for( int y= y_begin; y<= y_end; y++, x_left+= dx_left, x_right+= dx_right )//scan lines
     {
-        int x_begin= FastIntClampToZero( Fixed16CeilToInt(x_left) );
-        int x_end= FastIntMin( screen_size_x-1, Fixed16FloorToInt(x_right) );
+		int x_begin= FastIntClampToZero( (x_left>>16)+1 );
+        int x_end= FastIntMin( screen_size_x-1, x_right>>16 );
+
         int s= x_begin + screen_size_x * y;
         depth_buffer_t* depth_p= depth_buffer + s;
         unsigned char* pixels= screen_buffer + (s<<2);
@@ -1694,7 +1708,9 @@ void DrawTriangleDown()
 			//fixed16_t final_z= Fixed16Invert( FastIntMax( line_inv_z >> PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2, 65536/PSR_MIN_ZMIN ) );
 #endif
             //scale z to convert to depth buffer format
-            depth_buffer_t depth_z= final_z >> PSR_DEPTH_SCALER_LOG2;
+			depth_buffer_t depth_z;
+			if( additional_effect_mode == ADDITIONAL_EFFECT_DEPTH_HACK ) depth_z= final_z >> (PSR_DEPTH_SCALER_LOG2+PSR_DEPTH_HACK_SCALER);
+			else depth_z= final_z >> PSR_DEPTH_SCALER_LOG2;
             if( depth_test_mode != DEPTH_TEST_NONE )
             {
                 if( depth_test_mode == DEPTH_TEST_LESS )
@@ -1752,7 +1768,7 @@ void DrawTriangleDown()
                     const static int shift_table[]= { 16384,0, 32768,49152, 49152,32768, 0,16384 };
 					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
 					{
-						int ind= (x&1)+((y&1)<<1);
+						int ind= (x&1)|((y&1)<<1);
 						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
 						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
 						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
@@ -1763,7 +1779,7 @@ void DrawTriangleDown()
 					}
 					else
 					{
-						int ind= (x&1)+((y&1)<<1);
+						int ind= (x&1)|((y&1)<<1);
 						int uu= shift_table[ind+1];
 						int vv= shift_table[ind];
 						TexelFetchNearest( ( Fixed16Mul( line_tc[0], final_z ) + uu )>> 16,
@@ -1847,9 +1863,9 @@ void DrawTriangleDown()
 			else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
             {
 				int final_light[3];
-				final_light[0]= 3*Fixed16MulResultToInt( line_color[0], final_z );
-				final_light[1]= 3*Fixed16MulResultToInt( line_color[1], final_z );
-				final_light[2]= 3*Fixed16MulResultToInt( line_color[2], final_z );
+				final_light[0]= Fixed16MulResultToInt( line_color[0], final_z );
+				final_light[1]= Fixed16MulResultToInt( line_color[1], final_z );
+				final_light[2]= Fixed16MulResultToInt( line_color[2], final_z );
                 color[0]= FastIntUByteMulClamp255( final_light[0], color[0] );
                 color[1]= FastIntUByteMulClamp255( final_light[1], color[1] );
                 color[2]= FastIntUByteMulClamp255( final_light[2], color[2] );
@@ -1905,6 +1921,7 @@ void DrawTriangleDown()
                     pixels[0]= ( pixels[0] + color[0] )>>1;
                     pixels[1]= ( pixels[1] + color[1] )>>1;
                     pixels[2]= ( pixels[2] + color[2] )>>1;
+					//*((int*)pixels)= (((*((int*)pixels))>>1)&0x7f7f7f7f) + (((*((int*)color))>>1)&0x7f7f7f7f);
                 }
                 else if( blending_mode == BLENDING_SRC_ALPHA )
                 {
@@ -2101,21 +2118,10 @@ void DrawTriangleFromBuffer( char* buff )
             v+= sizeof(int) * 2;
         }
     }//for
-	int dx= Fixed16FloorToInt(triangle_in_vertex_xy[4]) - Fixed16CeilToInt(triangle_in_vertex_xy[2]);
-	int dy= Fixed16FloorToInt(triangle_in_vertex_xy[3]) - Fixed16CeilToInt(triangle_in_vertex_xy[1]);
-	//if triangle dimensions is very small, extend it to pixel size, to prevent integet overflow in delta calculations
-	if( dx == 0 )
+
+	int dy= (triangle_in_vertex_xy[3]>>16) - ((triangle_in_vertex_xy[1]>>16)+1);
+	if( dy>=0 )
 	{
-		triangle_in_vertex_xy[2]= Fixed16Floor(triangle_in_vertex_xy[2])+2;
-		triangle_in_vertex_xy[4]= Fixed16Ceil(triangle_in_vertex_xy[4])-2;
-	}
-	if( dx >=0 && dy>=0 )
-	{
-		if( dy == 0 )
-		{
-			triangle_in_vertex_xy[3]= Fixed16Ceil(triangle_in_vertex_xy[3])-2;
-			triangle_in_vertex_xy[1]= Fixed16Floor(triangle_in_vertex_xy[1])+2;//lower vertex
-		}
 		DrawTriangleDown< color_mode, texture_mode, blending_mode,
 		alpha_test_mode, lighting_mode, lightmap_mode, additional_lighting_mode,
 		depth_test_mode, write_depth > ();
@@ -2149,15 +2155,9 @@ void DrawTriangleFromBuffer( char* buff )
         v+= sizeof(int) * 2;
     }
 
-	dy= Fixed16FloorToInt(triangle_in_vertex_xy[1]) - Fixed16CeilToInt(triangle_in_vertex_xy[3]);
-	if( dx >=0 && dy>=0 )
+	dy= (triangle_in_vertex_xy[1]>>16) - ((triangle_in_vertex_xy[3]>>16)+1);
+	if( dy>=0 )
 	{
-		//if triangle dimensions is very small, extend it to pixel size, to prevent integet overflow in delta calculations
-		if( dy == 0 )
-		{
-			triangle_in_vertex_xy[3]= Fixed16Floor(triangle_in_vertex_xy[3])+2;
-			triangle_in_vertex_xy[1]= Fixed16Ceil(triangle_in_vertex_xy[1])-2;//upper vertex
-		}
 		DrawTriangleUp< color_mode, texture_mode, blending_mode,
 		alpha_test_mode, lighting_mode, lightmap_mode, additional_lighting_mode,
 		depth_test_mode, write_depth > ();
@@ -2719,6 +2719,14 @@ void (*DrawModelTriangleTextureLinearBlend)( char* buff )= Draw::DrawTriangleFro
 < COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_CONSTANT, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
 void (*DrawModelTriangleTextureFakeFilterBlend)( char* buff )= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_CONSTANT, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true >;
+
+//colored models without blending and with depth_hack
+void (*DrawModelTriangleTextureNearestLightingColoredDepthHack)( char* buff )= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_PER_VERTEX_COLORED, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_DEPTH_HACK, DEPTH_TEST_LESS, true >;
+void (*DrawModelTriangleTextureLinearLightingColoredDepthHack)( char* buff )= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_PER_VERTEX_COLORED, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_DEPTH_HACK, DEPTH_TEST_LESS, true >;
+void (*DrawModelTriangleTextureFakeFilterLightingColoredDepthHack)( char* buff )= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_PER_VERTEX_COLORED, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_DEPTH_HACK, DEPTH_TEST_LESS, true >;
 
 
 void (*DrawBeamTriangle)( char* buff )= Draw::DrawTriangleFromBuffer

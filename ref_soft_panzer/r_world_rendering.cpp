@@ -259,7 +259,9 @@ int GetSurfaceMipLevel( msurface_t* surf )
 		}
 	}
 	dst/= float(front_vertex_count);
-	float pixels_per_texel= dst * texels_in_pixel;
+
+	float* tex_basis_vec= surf->texinfo->vecs[0];
+	float pixels_per_texel= dst * texels_in_pixel * sqrtf( DotProduct(tex_basis_vec,tex_basis_vec) );
 	return FastIntLog2Clamp0( int(pixels_per_texel * 1.35f) );
 
 }

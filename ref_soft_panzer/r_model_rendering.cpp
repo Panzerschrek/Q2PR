@@ -202,21 +202,33 @@ void CalculateModelVertices(  entity_t* ent )
 	dmdl_t* model= (dmdl_t* )ent->model->extradata;
 
 	int current_model_frame= ent->frame % model->num_frames;
-	int prev_model_frame= ent->oldframe %model->num_frames;
 	daliasframe_t* frame= (daliasframe_t*)( (char*)model + model->ofs_frames + current_model_frame * model->framesize );
-	daliasframe_t* old_frame= (daliasframe_t*)( (char*)model + model->ofs_frames + prev_model_frame * model->framesize );
 
-	float inv_iterp_k= ent->backlerp;
-	float interp_k= 1.0f - inv_iterp_k;
-
-	for( int i= 0; i< model->num_xyz; i++ )
+	//if( (ent->flags&(RF_FRAMELERP|RF_WEAPONMODEL)) != 0 )
+	if(1)
 	{
-		current_model_vertices[i].x= ( float(frame->verts[i].v[0]) * frame->scale[0] + frame->translate[0] ) * interp_k + 
-				( float(old_frame->verts[i].v[0]) * old_frame->scale[0] + old_frame->translate[0] ) * inv_iterp_k ;
-		current_model_vertices[i].y= ( float(frame->verts[i].v[1]) * frame->scale[1] + frame->translate[1] ) * interp_k + 
-				( float(old_frame->verts[i].v[1]) * old_frame->scale[1] + old_frame->translate[1] ) * inv_iterp_k ;
-		current_model_vertices[i].z= ( float(frame->verts[i].v[2]) * frame->scale[2] + frame->translate[2] ) * interp_k +
-				( float(old_frame->verts[i].v[2]) * old_frame->scale[2] + old_frame->translate[2] ) * inv_iterp_k ;
+		int prev_model_frame= ent->oldframe %model->num_frames;
+		daliasframe_t* old_frame= (daliasframe_t*)( (char*)model + model->ofs_frames + prev_model_frame * model->framesize );
+		float inv_iterp_k= ent->backlerp;
+		float interp_k= 1.0f - inv_iterp_k;
+		for( int i= 0; i< model->num_xyz; i++ )
+		{
+			current_model_vertices[i].x= ( float(frame->verts[i].v[0]) * frame->scale[0] + frame->translate[0] ) * interp_k + 
+					( float(old_frame->verts[i].v[0]) * old_frame->scale[0] + old_frame->translate[0] ) * inv_iterp_k ;
+			current_model_vertices[i].y= ( float(frame->verts[i].v[1]) * frame->scale[1] + frame->translate[1] ) * interp_k + 
+					( float(old_frame->verts[i].v[1]) * old_frame->scale[1] + old_frame->translate[1] ) * inv_iterp_k ;
+			current_model_vertices[i].z= ( float(frame->verts[i].v[2]) * frame->scale[2] + frame->translate[2] ) * interp_k +
+					( float(old_frame->verts[i].v[2]) * old_frame->scale[2] + old_frame->translate[2] ) * inv_iterp_k ;
+		}
+	}
+	else
+	{
+		for( int i= 0; i< model->num_xyz; i++ )
+		{
+			current_model_vertices[i].x= ( float(frame->verts[i].v[0]) * frame->scale[0] + frame->translate[0] );
+			current_model_vertices[i].y= ( float(frame->verts[i].v[1]) * frame->scale[1] + frame->translate[1] );
+			current_model_vertices[i].z= ( float(frame->verts[i].v[2]) * frame->scale[2] + frame->translate[2] );
+		}
 	}
 }
 
@@ -414,6 +426,16 @@ triangle_draw_func_t GetModelDrawFunc( entity_t* ent )
 	return model_draw_funcs_table[ coord ];
 }
 
+triangle_draw_func_t GetModelDrawFuncDepthHack()
+{
+	if( strcmp( r_texture_mode->string, "texture_linear" ) == 0 )
+		return DrawModelTriangleTextureLinearLightingColoredDepthHack;
+	else if( strcmp( r_texture_mode->string, "texture_fake_filter" ) == 0 )
+		return DrawModelTriangleTextureFakeFilterLightingColoredDepthHack;
+	else
+		return DrawModelTriangleTextureNearestLightingColoredDepthHack;
+}
+
 void DrawAliasEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 {
 	if( (ent->flags&RF_WEAPONMODEL) != 0 )
@@ -455,10 +477,19 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 	char* buff0= buff;
 
 	if( (ent->flags&RF_TRANSLUCENT) != 0 && ent->alpha > 0.05f )
-		buff+= ComIn_SetConstantBlendFactor( buff, int(ent->alpha*250.0f) );
+		buff+= ComIn_SetConstantBlendFactor( buff, int(ent->alpha*245.0f) );
 
-	int current_texture_frame= ent->skinnum % model->num_skins;
-	Texture* tex= R_FindTexture( ent->model->skins[current_texture_frame] );
+	Texture* tex;
+	int current_texture_frame;
+	if( model->num_skins != 0 )
+	{
+		current_texture_frame= ent->skinnum % model->num_skins;
+		tex= R_FindTexture( ent->model->skins[current_texture_frame] );
+	}
+	else
+	{
+		tex= R_FindTexture( (image_t*)NULL );//HACK
+	}
 	buff+= ComIn_SetTexture( buff, tex );
 	int tex_scaler[]= { 65536 * tex->SizeX() / tex->OriginalSizeX(), -65536 * tex->SizeY() / tex->OriginalSizeY() };
 
@@ -468,7 +499,7 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 	DrawTriangleCall* call= (DrawTriangleCall*)buff;
 	call->triangle_count= 0;
 	call->vertex_size= is_fullbright ? ( sizeof(int)*3 + sizeof(int)*2 ): ( sizeof(int)*3 + sizeof(int)*2 + 4);
-	call->DrawFromBufferFunc= GetModelDrawFunc( ent );
+	call->DrawFromBufferFunc= ((ent->flags&RF_DEPTHHACK)==0) ? GetModelDrawFunc( ent ) : GetModelDrawFuncDepthHack();
 	buff+= sizeof(DrawTriangleCall);
 
 	float inv_iterp_k= ent->backlerp;
@@ -564,7 +595,7 @@ void GenerateBeamMesh( entity_t* ent )
 
 	
 	const int beam_cylinder_edges= 8;
-	float cylinder_radius= 2.0f;
+	float cylinder_radius= float(ent->frame) * 0.5f;
 	float direction_sign= 1.0f;
 	if( largest_component == 0 )
 	{

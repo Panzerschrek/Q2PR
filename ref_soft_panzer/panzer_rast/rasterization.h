@@ -129,6 +129,10 @@ extern void (*DrawModelTriangleTextureNearestBlend)( char* buff );
 extern void (*DrawModelTriangleTextureLinearBlend)( char* buff );
 extern void (*DrawModelTriangleTextureFakeFilterBlend)( char* buff );
 
+//models functions withound blend and with deph hack
+extern void (*DrawModelTriangleTextureNearestLightingColoredDepthHack)( char* buff );
+extern void (*DrawModelTriangleTextureLinearLightingColoredDepthHack)( char* buff );
+extern void (*DrawModelTriangleTextureFakeFilterLightingColoredDepthHack)( char* buff );
 
 //for beams ( map lasers, bfg )
 extern int  (*DrawBeamTriangleToBuffer)( char* buff );

@@ -54,6 +54,9 @@ Texture* R_FindTexture(image_t* image)
 	int i= image - r_images;
 	if( i >=0 && i< MAX_RIMAGES )
 		return textures + i;
+
+	if( white_texture.GetData() == NULL )
+		InitWhiteImage();
 	return &white_texture;
 }
 
@@ -66,6 +69,8 @@ Texture* R_FindTexture( char* name )
 			return textures + i;
 		}
 
+	if( white_texture.GetData() == NULL )
+		InitWhiteImage();
 	return &white_texture;
 }
 
