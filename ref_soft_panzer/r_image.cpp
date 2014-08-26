@@ -111,15 +111,10 @@ extern "C" image_t	*R_FindImage (char *name, imagetype_t type)
 		strcpy( img->name, name );
 		img->type= type;
 		if( type == it_skin )
-		{
 			need_resize_to_pot= true;
-			need_convert_to_rgba= true;
-		}
 		else
-		{
 			need_resize_to_pot= false;
-			need_convert_to_rgba= true;
-		}
+		need_convert_to_rgba= true;
 	}
 	else if( !strcmp(name+len-4, ".wal") )
 	{
@@ -142,17 +137,23 @@ extern "C" image_t	*R_FindImage (char *name, imagetype_t type)
 				break;
 			}
 		}
-
+		
+		bool need_build_palettized_lods= r_palettized_textures->value != 0.0f && type == it_wall;
 		int t= img - r_images;
-		textures[t].Create( img->width, img->height, true, (unsigned char*)d_8to24table, img->pixels[0], need_resize_to_pot );
-		//textures[t].SwapRedBlueChannles();
+		textures[t].Create( img->width, img->height, true, (unsigned char*)d_8to24table, img->pixels[0], need_resize_to_pot, need_build_palettized_lods );
+
 		if( need_convert_to_rgba  || r_palettized_textures->value == 0.0f )
 		{
 			textures[t].Convert2RGBAFromPlaettized();
-			int alpha_color= d_8to24table[255];
-			textures[t].SetColorKeyToAlpha( (unsigned char*)&alpha_color, 255 );
+			if( type == it_pic )//only pics has alpha
+			{
+				int alpha_color= d_8to24table[255];
+				textures[t].SetColorKeyToAlpha( (unsigned char*)&alpha_color, 255 );
+			}
 		}
 	}
+	else
+		return NULL;
 
 	strcpy( img->name, name );
 
@@ -179,7 +180,6 @@ extern "C" void R_FreeUnusedImages()
 		}
 		else
 		{
-			Com_PageInMemory ((byte *)img->pixels[0], img->width*img->height);
 		}
 	}
 }

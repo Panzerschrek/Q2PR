@@ -17,7 +17,30 @@ extern "C" void PRast_MakeGammaCorrection( const unsigned char* gamma_table )
 	{
 		mov esi, d
 		mov edi, d_end
+
 		mov ebx, gamma_table
+
+		do_correction:
+		mov al, byte ptr[esi  ]
+		xlat
+		mov byte ptr[esi  ], al
+		mov al, byte ptr[esi+1]
+		xlat
+		mov byte ptr[esi+1], al
+		mov al, byte ptr[esi+2]
+		xlat
+		mov byte ptr[esi+2], al
+		mov al, byte ptr[esi+4]
+		xlat
+		mov byte ptr[esi+4], al
+		mov al, byte ptr[esi+5]
+		xlat
+		mov byte ptr[esi+5], al
+		mov al, byte ptr[esi+6]
+		xlat
+		mov byte ptr[esi+6], al
+
+		/*mov ebx, gamma_table
 		do_correction:
 		movzx ecx, byte ptr[esi  ]
 		mov al, byte ptr[ebx+ecx]
@@ -37,7 +60,7 @@ extern "C" void PRast_MakeGammaCorrection( const unsigned char* gamma_table )
 		mov byte ptr[esi+5], al
 		movzx ecx, byte ptr[esi+6]
 		mov al, byte ptr[ebx+ecx]
-		mov byte ptr[esi+6], al
+		mov byte ptr[esi+6], al*/
 
 		add esi, 8
 		cmp esi, edi
@@ -154,7 +177,7 @@ next64bytes:
 		add ecx, 64
 		cmp ecx, edx 
 		jne next64bytes
-			emms
+		emms
 	}
 #else
 	register int clear_value= color[0] | (color[1]<<8) | (color[2]<<16) | (color[3]<<24);
@@ -501,15 +524,13 @@ do_something:
 		ror ecx, 8
 		ror edx, 8
 		mov dword ptr[esi   ], eax
-		mov dword ptr[esi +4], ebx
-		mov dword ptr[esi +8], ecx
-		mov dword ptr[esi +16], edx
+		mov dword ptr[esi+ 4], ebx
+		mov dword ptr[esi+ 8], ecx
+		mov dword ptr[esi+16], edx
 
 		add esi, 16
 		cmp esi, edi
 		jnz do_something
-
-
 	}
 #else
 	for( ; pix!= pix_end; pix++ )

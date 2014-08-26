@@ -12,6 +12,9 @@
 #include "panzer_rast/math_lib/matrix.h"
 #include "panzer_rast/rendering_state.h"
 
+
+#define Q2_UNITS_PER_METER 64
+
 typedef  void(*triangle_draw_func_t)(char*);
 
 
@@ -30,5 +33,6 @@ int DrawWorldSurface( msurface_t* surf, triangle_draw_func_t near_draw_func, tri
 void SetSurfaceMatrix( m_Mat4* mat );
 void SetFov( float fov );
 void SetWorldFrame( int frame );
+void SetClipPlanes( mplane_t* planes, int count );
 
 #endif//R_WORLD_RENDERING_H

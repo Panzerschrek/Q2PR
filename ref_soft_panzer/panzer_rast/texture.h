@@ -10,7 +10,7 @@ public:
 	/*allocate memory for texture, copy data from (*data) ( if it not null ),
 	resize to upper POT size, build lods
 	*/
-	void Create( int width, int height, bool palettized, const unsigned char* pelette, const unsigned char* data, bool resize_to_pot= true );
+	void Create( int width, int height, bool palettized, const unsigned char* pelette, const unsigned char* data, bool resize_to_pot= true, bool build_palettized_lods= false );
 	int SizeX()const;
 	int SizeY()const;
 	int OriginalSizeX()const;
@@ -28,6 +28,7 @@ public:
 	void Convert2GRBS();
 	void Convert2RGBAFromPlaettized();
 	void SetColorKeyToAlpha( const unsigned char* color_key, unsigned char alpha );//work only for RGBA textures
+	void FindAndReplaceColor( const unsigned char* color_key, const unsigned char* new_color );
 	void SwapRedBlueChannles();
 private:
 

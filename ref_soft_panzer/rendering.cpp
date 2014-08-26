@@ -4,7 +4,6 @@
 #include "panzer_rast/math_lib/matrix.h"
 #include "panzer_rast/rendering_state.h"
 
-#define Q2_UNITS_PER_METER 64
 
 extern Texture* R_FindTexture( char* name );
 extern Texture* R_FindTexture(image_t* image);
@@ -171,7 +170,7 @@ extern "C" void PR_ResetTimers()
 
 extern "C" void PR_InitRendering()
 {
-	use_multithreading = (bool)(int)r_use_multithreading->value;
+	use_multithreading = r_use_multithreading->value != 0;
 
 	if( use_multithreading )
 	{
@@ -182,15 +181,18 @@ extern "C" void PR_InitRendering()
 
 	memset( &fps_calc, 0, sizeof(fps_calc_t) );
 
-	front_chars= (CharBuffer*) malloc( sizeof(CharBuffer) );
-	back_chars= (CharBuffer*) malloc( sizeof(CharBuffer) );
+	//front_chars= (CharBuffer*) malloc( sizeof(CharBuffer) );
+	//back_chars= (CharBuffer*) malloc( sizeof(CharBuffer) );
+	front_chars= new CharBuffer;
+	back_chars= new CharBuffer;
+
 	front_chars->char_count= 0;
 	back_chars->char_count= 0;
 
 	memset( sky_images, sizeof(sky_images), 0 );
 
-	command_buffer.buffer= Com_ResizeCommandBuffer( NULL, 0, 1024*1024*16, &command_buffer.size );
-	back_command_buffer.buffer= Com_ResizeCommandBuffer( NULL, 0, 1024*1024*16, &back_command_buffer.size );
+	command_buffer.buffer= Com_ResizeCommandBuffer( NULL, 0, 1024*1024*3, &command_buffer.size );
+	back_command_buffer.buffer= Com_ResizeCommandBuffer( NULL, 0, 1024*1024*3, &back_command_buffer.size );
 
 	command_buffer.current_pos= 
 		back_command_buffer.current_pos= 0;
@@ -199,6 +201,7 @@ extern "C" void PR_InitRendering()
 }
 extern "C" void PR_ShutdownRendering()
 {
+
 	if(use_multithreading)
 	{
 		Sys_DestroyThread(backend_thread);
@@ -215,6 +218,11 @@ extern "C" void PR_ShutdownRendering()
 		backend_front_command_buffer_mutex.mutex_handle= 0;*/
 
 	}
+	delete[] command_buffer.buffer;
+	delete[] back_command_buffer.buffer;
+
+	delete front_chars;
+	delete back_chars;
 }
 
 extern "C" void PR_LockFramebuffer()
@@ -747,8 +755,8 @@ void DrawSkyBox( const m_Mat4* mat )
 
 void InitParticles()
 {
-	LoadTGA( "pics/particle.tga", particle_image.pixels, &particle_image.width, &particle_image.height );
-	particle_texture.Create( particle_image.width, particle_image.height, false, NULL, particle_image.pixels[0] );
+	//LoadTGA( "pics/particle.tga", particle_image.pixels, &particle_image.width, &particle_image.height );
+	//particle_texture.Create( particle_image.width, particle_image.height, false, NULL, particle_image.pixels[0] );
 }
 
 
@@ -756,7 +764,7 @@ void DrawParticles( const m_Mat4* mat, particle_t* particles, int count, float f
 {
 	int call_size = 
 		 8//set color call
-		+8//call struct
+		+sizeof(DrawSpriteCall)//call struct
 		+5*sizeof(int);//parameters
 	if( command_buffer.current_pos + call_size * count > command_buffer.size )
 		Com_ResizeCommandBuffer( command_buffer.buffer, command_buffer.size,
@@ -891,6 +899,51 @@ void InitPlayerFlashlight()
 	player_flashlight.direction[2]= sinf(b);
 }
 
+
+void InitClipPlanes( m_Mat4* normal_mat )
+{
+	mplane_t planes[5];
+
+	//near clip plane
+	const float to_rad = 3.1415926535f / 180.0f;
+	float a= (r_newrefdef.viewangles[1]  -180.0f )* to_rad;
+	float b= r_newrefdef.viewangles[0] * to_rad;
+	planes[0].normal[0]= -cosf(a) * cosf(b);
+	planes[0].normal[1]= -sinf(a) * cosf(b);
+	planes[0].normal[2]= -sinf(b);
+
+	vec3_t moved_cam_pos;
+	VectorCopy( r_newrefdef.vieworg, moved_cam_pos );
+	float z_near= 1.0625f * PSR_MIN_ZMIN_FLOAT * float(Q2_UNITS_PER_METER);
+	moved_cam_pos[0]+= planes[0].normal[0] * z_near;
+	moved_cam_pos[1]+= planes[0].normal[1] * z_near;
+	moved_cam_pos[2]+= planes[0].normal[2] * z_near;
+	planes[0].dist= DotProduct(moved_cam_pos, planes[0].normal );
+
+	const float angle_scaler= 1.05f;
+	//top plane
+	a= r_newrefdef.fov_y*0.5f*to_rad*angle_scaler;
+	m_Vec3 tmp_normal( 0.0f, -sinf(a), -cosf(a) );
+	*((m_Vec3*)planes[1].normal)= tmp_normal * *normal_mat;
+	planes[1].dist= DotProduct(r_newrefdef.vieworg, planes[1].normal );
+	//bottom plane
+	a= r_newrefdef.fov_y*0.5f*to_rad*angle_scaler;
+	tmp_normal.x= 0.0f; tmp_normal.y= -sinf(a); tmp_normal.z= cosf(a);
+	*((m_Vec3*)planes[2].normal)= tmp_normal * *normal_mat;
+	planes[2].dist= DotProduct(r_newrefdef.vieworg, planes[2].normal );
+	//left plane
+	a= r_newrefdef.fov_x*0.5f*to_rad*angle_scaler;
+	tmp_normal.x= -cosf(a); tmp_normal.y= -sinf(a); tmp_normal.z= 0.0f;
+	*((m_Vec3*)planes[3].normal)= tmp_normal * *normal_mat;
+	planes[3].dist= DotProduct(r_newrefdef.vieworg, planes[3].normal );
+	//right plane
+	a= r_newrefdef.fov_x*0.5f*to_rad*angle_scaler;
+	tmp_normal.x= cosf(a); tmp_normal.y= -sinf(a); tmp_normal.z= 0.0f;
+	*((m_Vec3*)planes[4].normal)= tmp_normal * *normal_mat;
+	planes[4].dist= DotProduct(r_newrefdef.vieworg, planes[4].normal );
+
+	SetClipPlanes( planes, 5 );
+}
 extern "C" void PANZER_RenderFrame(refdef_t *fd)
 {
 	r_newrefdef= *fd;
@@ -915,7 +968,7 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 
 	if( (fd->rdflags&RDF_NOWORLDMODEL) == 0 )
 	{
-		unsigned char clear_color[]= { 240, 32, 250, 0 };
+		unsigned char clear_color[]= { 0, 0, 0, 0 };
 		command_buffer.current_pos+= ComIn_ClearColorBuffer(
 			(char*)command_buffer.buffer + command_buffer.current_pos, clear_color );
 
@@ -924,7 +977,7 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 		command_buffer.current_pos+= ComIn_SetConstantTime(
 			(char*)command_buffer.buffer + command_buffer.current_pos, int(r_newrefdef.time*65536.0f*64.0f) );
 
-		m_Mat4 pers, rot_x, rot_y, rot_z, result, scale, basis_change, shift;
+		m_Mat4 pers, rot_x, rot_y, rot_z, result, scale, basis_change, shift, normal_mat;
 
 		const float to_rad = 3.1415926535f / 180.0f;
 		m_Vec3 pos( -fd->vieworg[0], -fd->vieworg[1], -fd->vieworg[2] );
@@ -949,10 +1002,19 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 		pers[5]= 1.0f / tan( fd->fov_y * to_rad * 0.5f );
 
 		result=  scale * rot_z * rot_x * rot_y * basis_change * pers;
+		
 
 		result= shift * scale * rot_z * rot_x * rot_y * basis_change * pers;
 		SetFov(fd->fov_y * to_rad);
 		BuildSurfaceLists(&result, fd->vieworg);
+
+		/*rot_z.Identity();
+		rot_z.RotateZ( -(fd->viewangles[1]  + 90.0f )* to_rad );*/
+		rot_x.RotateX( -fd->viewangles[0] * to_rad );
+		rot_z.RotateZ( -(fd->viewangles[1]  + 90.0f )* to_rad );
+		rot_y.RotateY( -fd->viewangles[2] * to_rad );
+		normal_mat= rot_y * rot_x * rot_z;
+		InitClipPlanes(&normal_mat);
 
 		SetSurfaceMatrix(&result);
 		DrawWorldTextureChains();

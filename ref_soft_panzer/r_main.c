@@ -160,6 +160,7 @@ cvar_t  *r_texture_mode;
 cvar_t  *r_lightmap_saturation;
 cvar_t  *r_dlights_saturation;
 cvar_t	*r_palettized_textures;
+cvar_t	*r_interpolate_videos;
 
 /*
 after map switching some resources ( models and ther skins, textures )
@@ -265,7 +266,7 @@ void Draw_BuildGammaTable (void)
 	
 	for (i=0 ; i<256 ; i++)
 	{
-		inf = 255 * pow ( (i+0.5)/255.5 , g ) + 0.5;
+		inf = (int)(255.0f * powf ( (i+0.5f)/255.5f , g ) + 0.5f);
 		if (inf < 0)
 			inf = 0;
 		if (inf > 255)
@@ -317,6 +318,7 @@ void PANZER_Register (void)
 	r_texture_mode= ri.Cvar_Get( "r_texture_mode", "texture_nearest", CVAR_ARCHIVE ); r_texture_mode->modified= false;
 	r_use_multithreading= ri.Cvar_Get( "r_use_multithreading", "0", CVAR_ARCHIVE ); r_use_multithreading->modified= false;
 	r_palettized_textures= ri.Cvar_Get( "r_palettized_textures", "0", CVAR_ARCHIVE ); r_palettized_textures->modified= false;
+	r_interpolate_videos= ri.Cvar_Get( "r_interpolate_videos", "1", CVAR_ARCHIVE );
 
 	ri.Cmd_AddCommand( "flashlight", R_Flashlight_f );
 	ri.Cmd_ExecuteText( 0, "bind f flashlight" );
@@ -374,7 +376,7 @@ void PANZER_BeginRegistration(char *map)
 struct model_s *PANZER_RegisterModel(char *name)
 {
 	model_t* mod= R_RegisterModel(name);
-	printf( "register model \"%s\"%s\n", name, mod == NULL ? " - failed" : "" );
+	//printf( "register model \"%s\"%s\n", name, mod == NULL ? " - failed" : "" );
 	return mod;
 }
 struct image_s *PANZER_RegisterPic(char *name)
@@ -406,7 +408,7 @@ void PANZER_EndRegistration(void)
 	R_EndRegistration();
 	PR_ResetTimers();
 	//R_FreeUnusedImages();
-	printf( "--------end registration\n" );
+	//printf( "--------end registration\n" );
 }
 
 extern void PANZER_RenderFrame(refdef_t *fd);
@@ -441,53 +443,62 @@ void PANZER_DrawStretchRaw(int x, int y, int w, int h, int cols, int rows, byte 
 	fixed16_t du= ((cols-2)<<16)/w;
 	fixed16_t dv= ((rows-2)<<16)/h;
 
-	for( j= y+h-1, v= 65536; j>= y; j--, v+=dv )
-		for( i= x, u= 65536, dst= vid.buffer + ((x + j*vid.width)<<2), src= data + (v>>16)*cols;
-			i< x+w; i++, u+=du, dst+=4 )
-		{
-			//make linear interpolation
-			int iu = u>>16;
-			int iv=  v>>16;
-			int ddu= (u&65535)>>8;
-			int ddu1= 256 - ddu;
-			int ddv= (v&65535)>>8;
-			int ddv1= 256 - ddv;
-			int colors[16];
-			int mixed_colors[8];
-			int ind;
-			int coord= iu + iv*cols;
-			ind= data[coord]<<2;
-			colors[0 ]= cinematic_palette[ind  ];
-			colors[1 ]= cinematic_palette[ind+1];
-			colors[2 ]= cinematic_palette[ind+2];
-			coord++; ind= data[coord]<<2;
-			colors[4 ]= cinematic_palette[ind  ];
-			colors[5 ]= cinematic_palette[ind+1];
-			colors[6 ]= cinematic_palette[ind+2];
-			coord+= cols; ind= data[coord]<<2;
-			colors[12]= cinematic_palette[ind  ];
-			colors[13]= cinematic_palette[ind+1];
-			colors[14]= cinematic_palette[ind+2];
-			coord--; ind= data[coord]<<2;
-			colors[8 ]= cinematic_palette[ind  ];
-			colors[9 ]= cinematic_palette[ind+1];
-			colors[10]= cinematic_palette[ind+2];
+	if( r_interpolate_videos->value )
+	{
+		for( j= y+h-1, v= 65536; j>= y; j--, v+=dv )
+			for( i= x, u= 65536, dst= vid.buffer + ((x + j*vid.width)<<2), src= data + (v>>16)*cols;
+				i< x+w; i++, u+=du, dst+=4 )
+			{
+				//make linear interpolation
+				int iu = u>>16;
+				int iv=  v>>16;
+				int ddu= (u&65535)>>8;
+				int ddu1= 256 - ddu;
+				int ddv= (v&65535)>>8;
+				int ddv1= 256 - ddv;
+				int colors[16];
+				int mixed_colors[8];
+				int ind;
+				int coord= iu + iv*cols;
+				ind= data[coord]<<2;
+				colors[0 ]= cinematic_palette[ind  ];
+				colors[1 ]= cinematic_palette[ind+1];
+				colors[2 ]= cinematic_palette[ind+2];
+				coord++; ind= data[coord]<<2;
+				colors[4 ]= cinematic_palette[ind  ];
+				colors[5 ]= cinematic_palette[ind+1];
+				colors[6 ]= cinematic_palette[ind+2];
+				coord+= cols; ind= data[coord]<<2;
+				colors[12]= cinematic_palette[ind  ];
+				colors[13]= cinematic_palette[ind+1];
+				colors[14]= cinematic_palette[ind+2];
+				coord--; ind= data[coord]<<2;
+				colors[8 ]= cinematic_palette[ind  ];
+				colors[9 ]= cinematic_palette[ind+1];
+				colors[10]= cinematic_palette[ind+2];
 
-			mixed_colors[0]= ( colors[ 0] * ddu1 + colors[ 4] * ddu );
-			mixed_colors[1]= ( colors[ 1] * ddu1 + colors[ 5] * ddu );
-			mixed_colors[2]= ( colors[ 2] * ddu1 + colors[ 6] * ddu );
-			mixed_colors[4]= ( colors[ 8] * ddu1 + colors[12] * ddu );
-			mixed_colors[5]= ( colors[ 9] * ddu1 + colors[13] * ddu );
-			mixed_colors[6]= ( colors[10] * ddu1 + colors[14] * ddu );
+				mixed_colors[0]= ( colors[ 0] * ddu1 + colors[ 4] * ddu );
+				mixed_colors[1]= ( colors[ 1] * ddu1 + colors[ 5] * ddu );
+				mixed_colors[2]= ( colors[ 2] * ddu1 + colors[ 6] * ddu );
+				mixed_colors[4]= ( colors[ 8] * ddu1 + colors[12] * ddu );
+				mixed_colors[5]= ( colors[ 9] * ddu1 + colors[13] * ddu );
+				mixed_colors[6]= ( colors[10] * ddu1 + colors[14] * ddu );
 
-			//write to dst swapped channels ( 0xAARRGGBB )
-			dst[2]= ( mixed_colors[0] * ddv1 + mixed_colors[4] * ddv ) >> 16;
-			dst[1]= ( mixed_colors[1] * ddv1 + mixed_colors[5] * ddv ) >> 16;
-			dst[0]= ( mixed_colors[2] * ddv1 + mixed_colors[6] * ddv ) >> 16;
+				dst[0]= ( mixed_colors[0] * ddv1 + mixed_colors[4] * ddv ) >> 16;
+				dst[1]= ( mixed_colors[1] * ddv1 + mixed_colors[5] * ddv ) >> 16;
+				dst[2]= ( mixed_colors[2] * ddv1 + mixed_colors[6] * ddv ) >> 16;
 
-			//simple nearest video filtration
-			//*((int*)dst)= ((int*)cinematic_palette)[ src[(u>>16)] ];  
-		}
+			}
+	}//if iterpolate
+	else
+	{
+		for( j= y+h-1, v= 65536; j>= y; j--, v+=dv )
+			for( i= x, u= 65536, dst= vid.buffer + ((x + j*vid.width)<<2), src= data + (v>>16)*cols;
+				i< x+w; i++, u+=du, dst+=4 )
+			{
+				*((int*)dst)= ((int*)cinematic_palette)[ src[(u>>16)] ];  
+			}
+	}
 }
 
 void PANZER_CinematicSetPalette( const unsigned char *palette)
@@ -504,6 +515,7 @@ void PANZER_CinematicSetPalette( const unsigned char *palette)
 		cinematic_palette[i*4  ]= palette[i*3  ];
 		cinematic_palette[i*4+1]= palette[i*3+1];
 		cinematic_palette[i*4+2]= palette[i*3+2];
+		ColorByteSwap( cinematic_palette + i*4 );
 	}
 }
 void PANZER_BeginFrame( float camera_separation )
@@ -582,7 +594,6 @@ qboolean PANZER_Init ( void *hinstance, void *wndproc )
 	// create the window
 	PANZER_BeginFrame( 0.0f );
 	
-
 	ri.Con_Printf (PRINT_ALL, "panzer_ref_soft version: "REF_VERSION"\n");
 
 	return true;

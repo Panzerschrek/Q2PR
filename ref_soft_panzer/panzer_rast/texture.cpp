@@ -29,7 +29,7 @@ is_palettized_texture(false)
 		lods_data[i]= NULL;
 }
 
-void Texture::Create( int width, int height, bool palettized, const unsigned char* pal, const unsigned char* data, bool resize_to_pot )
+void Texture::Create( int width, int height, bool palettized, const unsigned char* pal, const unsigned char* data, bool resize_to_pot, bool build_palettized_lods )
 {
 	original_size_x= width;
 	original_size_y= height;
@@ -71,15 +71,16 @@ void Texture::Create( int width, int height, bool palettized, const unsigned cha
 		{
 			if( lods_data[i] != NULL ) delete[] lods_data[i];
 			lods_data[i]= new unsigned char[ sx * sy ];
-			//lods_data[i]= (unsigned char*) malloc( sx * sy );
 			if( data != NULL )
-				GenLodPlaettized( sx<<1, sy<<1, lods_data[i-1], lods_data[i] );
+			{
+				if( build_palettized_lods )
+					GenLodPlaettized( sx<<1, sy<<1, lods_data[i-1], lods_data[i] );
+			}
 		}
 		else
 		{
 			if( lods_data[i] != NULL ) delete[] lods_data[i];
 			lods_data[i]= new unsigned char[ sx * sy * 4 ];
-			//lods_data[i]= (unsigned char*) malloc( sx * sy * 4 );
 			if( data != NULL )
 				GenLod( sx<<1, sy<<1, lods_data[i-1], lods_data[i] );
 		}
@@ -564,6 +565,18 @@ void Texture::SetColorKeyToAlpha( const unsigned char* color_key, unsigned char 
 		{
 			pix[3]= alpha;
 		}
+	}
+}
+
+void Texture::FindAndReplaceColor( const unsigned char* color_key, const unsigned char* new_color )
+{
+	int c0= *((int*)color_key);
+	int c1= *((int*)new_color);
+	unsigned char* pix= data, *pix_end= data + size_x * size_y * 4;
+	for( ; pix!= pix_end; pix+=4 )
+	{
+		if( *((int*)pix) == c0 )
+		*((int*)pix)= c1;
 	}
 }
 

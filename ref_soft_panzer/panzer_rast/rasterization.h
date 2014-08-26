@@ -88,6 +88,7 @@ extern void (*DrawWorldTriangleTextureNearestPalettizedTurbulenceBlend)(char*buf
 extern void (*DrawWorldTriangleTextureLinearPalettizedTurbulenceBlend)(char*buff);
 extern void (*DrawWorldTriangleTextureFakeFilterPalettizedTurbulenceBlend)(char*buff);
 
+/*
 //world rendering functions without lightmaps
 extern void (*DrawWorldTriangleTextureNearest)(char*buff);
 extern void (*DrawWorldTriangleTextureLinear)(char*buff);
@@ -102,6 +103,7 @@ extern void (*DrawWorldTriangleTextureFakeFilterPalettized)(char*buff);
 extern void (*DrawWorldTriangleTextureNearestPalettizedBlend)(char*buff);//with blend
 extern void (*DrawWorldTriangleTextureLinearPalettizedBlend)(char*buff);
 extern void (*DrawWorldTriangleTextureFakeFilterPalettizedBlend)(char*buff);
+*/
 
 
 extern void (*DrawWorldSprite)(int x0, int y0, int x1, int y1, fixed16_t depth);

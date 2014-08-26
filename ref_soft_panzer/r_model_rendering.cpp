@@ -158,7 +158,7 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos, bool is_aplha
 		if( (texinfo->flags&SURF_NODRAW) != 0 )
 				continue;
 
-		bool no_lightmap= (surf->flags&SURF_DRAWTURB)!= 0 || (surf->texinfo->flags&SURF_WARP)!= 0;
+		bool no_lightmap= (surf->flags&SURF_DRAWTURB)!= 0 || (surf->texinfo->flags&SURF_WARP)!= 0 ||  surf->samples == NULL;
 		bool trans_surface= (texinfo->flags&(SURF_TRANS66|SURF_TRANS33)) != 0;
 		if( no_lightmap )
 		{
