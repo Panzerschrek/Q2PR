@@ -1,4 +1,5 @@
 #include "r_light.h"
+#include "panzer_rast/math_lib/matrix.h"
 
 typedef struct lightmap_buffer_s
 {
@@ -20,6 +21,14 @@ static dlight_t transformed_dlights[MAX_DLIGHTS];//transformed lights( saturatio
 
 static int lightmap_type;
 static bool is_colored_lightmap;
+
+void TransformLights( m_Mat4* mat, int light_count )
+{
+	for( int i= 0; i< light_count; i++ )
+	{
+		*((m_Vec3*)transformed_dlights[i].origin)= *((m_Vec3*)transformed_dlights[i].origin) * *mat;
+	}
+}
 
 void ColorCorrectLights( int num_lights )
 {
@@ -120,22 +129,28 @@ void R_MarkLights (dlight_t *light, int bit, mnode_t *node)
 R_PushDlights
 =============
 */
-void R_PushDlights (model_t *model)
+void R_PushDlights (model_t *model, const float* lights_transform_mat )
 {
 	int		i;
 	dlight_t	*l;
 
+	int real_lights= r_newrefdef.num_dlights;
+	if( real_lights > MAX_DLIGHTS ) real_lights= MAX_DLIGHTS;
+
+	for( i= 0; i< real_lights; i++ )
+		transformed_dlights[i]= r_newrefdef.dlights[i];
+
+	ColorCorrectLights(real_lights);
+	TransformLights( (m_Mat4*)lights_transform_mat, real_lights );
+
+	
 	r_dlightframecount = r_framecount;
-	for (i=0, l = r_newrefdef.dlights ; i<r_newrefdef.num_dlights && i<MAX_DLIGHTS ; i++, l++)
+	for (i=0, l = transformed_dlights ; i<r_newrefdef.num_dlights && i<MAX_DLIGHTS ; i++, l++)
 	{
 		R_MarkLights ( l, 1<<i, 
 			model->nodes + model->firstnode);
-		transformed_dlights[i]= *l;
 	}
 
-	int real_lights= r_newrefdef.num_dlights;
-	if( real_lights > MAX_DLIGHTS ) real_lights= MAX_DLIGHTS;
-	ColorCorrectLights(real_lights);
 }
 
 

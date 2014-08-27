@@ -101,7 +101,7 @@ void DrawSpriteEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 }
 
 
-void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos, bool is_aplha )
+void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam_pos, bool is_aplha )
 {
 
 	model_t* model= ent->model;
@@ -112,8 +112,8 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos, bool is_aplha
 		return;
 
 	vec3_t cam_pos_model_space;
-	m_Mat4 inverse_entity_matrix;
-	CalcualteEntityReverseMatrix( ent, &inverse_entity_matrix );
+	m_Mat4 inverse_entity_matrix, inverse_normal_matrix;
+	CalcualteEntityReverseMatrix( ent, &inverse_entity_matrix, &inverse_normal_matrix );
 	//convert camera position to model space, to use backplane discarding
 	*((m_Vec3*)cam_pos_model_space)= *((m_Vec3*)cam_pos) * inverse_entity_matrix;
 
@@ -128,13 +128,17 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos, bool is_aplha
 	triangle_draw_func_t  far_draw_func_no_lightmap_alpha= GetWorldFarDrawFuncNoLightmaps(true);
 
 
-	m_Mat4 entity_mat, result_mat;
+	m_Mat4 entity_mat, result_mat, inverse_entity_mat, inverse_normal_mat; 
 	CalculateEntityMatrix( ent, &entity_mat );
 	result_mat= entity_mat * *mat;
 	SetSurfaceMatrix(&result_mat);
 
+	inverse_normal_matrix= *normal_mat * inverse_normal_matrix;
+	InitFrustrumClipPlanes( &inverse_normal_matrix, cam_pos_model_space );
+	
+
 	//for dynamic lighting of inline submodels
-	//R_PushDlights(model);
+	R_PushDlights(model, (float*)&inverse_entity_matrix);
 
 	for( i= 0, surf= model->surfaces + model->firstmodelsurface; i< model->nummodelsurfaces; i++, surf++ )
 	{

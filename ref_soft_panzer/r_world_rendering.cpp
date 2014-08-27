@@ -252,7 +252,7 @@ bool surface_plane_pos[max_poly_vertices];
 1, 2 - left, right
 3, 4 - bottom, top
 */
-mplane_t view_planes[8];
+mplane_t clip_planes[5+max_poly_vertices];
 mvertex_t tmp_vertices_stack[max_poly_vertices + 8];
 int tmp_vertices_stack_pos;
 
@@ -380,7 +380,7 @@ int ClipFace( int vertex_count )//returns new vertex count
 	tmp_vertices_stack_pos= 0;
 	for( int i= 0; i< 5; i++ )
 	{
-		vertex_count= ClipFaceByPlane( vertex_count, view_planes + i );
+		vertex_count= ClipFaceByPlane( vertex_count, clip_planes + i );
 		if( vertex_count == 0 )
 			return 0;
 	}
@@ -389,11 +389,51 @@ int ClipFace( int vertex_count )//returns new vertex count
 }
 
 
-void SetClipPlanes( mplane_t* planes, int count )
+/*void SetClipPlanes( mplane_t* planes, int count )
 {
 	for( int i= 0; i< count && i<8; i++ )
 		view_planes[i]= planes[i];
+}*/
+
+void InitFrustrumClipPlanes( m_Mat4* normal_mat, vec3_t transformed_cam_pos )
+{
+	//near clip plane
+	const float to_rad = 3.1415926535f / 180.0f;
+	float a;
+	clip_planes[0].normal[0]= 0.0f; clip_planes[0].normal[1]= -1.0f; clip_planes[0].normal[2] = 0.0f;
+	*((m_Mat4*)clip_planes[0].normal)= *((m_Mat4*)clip_planes[0].normal) * *normal_mat;
+
+	vec3_t moved_cam_pos;
+	VectorCopy( transformed_cam_pos, moved_cam_pos );
+	float z_near= 1.0625f * PSR_MIN_ZMIN_FLOAT * float(Q2_UNITS_PER_METER);
+	moved_cam_pos[0]+= clip_planes[0].normal[0] * z_near;
+	moved_cam_pos[1]+= clip_planes[0].normal[1] * z_near;
+	moved_cam_pos[2]+= clip_planes[0].normal[2] * z_near;
+	clip_planes[0].dist= DotProduct(moved_cam_pos, clip_planes[0].normal );
+
+	const float angle_scaler= 1.01f;
+	//top plane
+	a= r_newrefdef.fov_y*0.5f*to_rad*angle_scaler;
+	m_Vec3 tmp_normal( 0.0f, -sinf(a), -cosf(a) );
+	*((m_Vec3*)clip_planes[1].normal)= tmp_normal * *normal_mat;
+	clip_planes[1].dist= DotProduct(transformed_cam_pos, clip_planes[1].normal );
+	//bottom plane
+	a= r_newrefdef.fov_y*0.5f*to_rad*angle_scaler;
+	tmp_normal.x= 0.0f; tmp_normal.y= -sinf(a); tmp_normal.z= cosf(a);
+	*((m_Vec3*)clip_planes[2].normal)= tmp_normal * *normal_mat;
+	clip_planes[2].dist= DotProduct(transformed_cam_pos, clip_planes[2].normal );
+	//left plane
+	a= r_newrefdef.fov_x*0.5f*to_rad*angle_scaler;
+	tmp_normal.x= -cosf(a); tmp_normal.y= -sinf(a); tmp_normal.z= 0.0f;
+	*((m_Vec3*)clip_planes[3].normal)= tmp_normal * *normal_mat;
+	clip_planes[3].dist= DotProduct(transformed_cam_pos, clip_planes[3].normal );
+	//right plane
+	a= r_newrefdef.fov_x*0.5f*to_rad*angle_scaler;
+	tmp_normal.x= cosf(a); tmp_normal.y= -sinf(a); tmp_normal.z= 0.0f;
+	*((m_Vec3*)clip_planes[4].normal)= tmp_normal * *normal_mat;
+	clip_planes[4].dist= DotProduct(transformed_cam_pos, clip_planes[4].normal );
 }
+
 
 //returns number of triangles
 int DrawWorldSurface( msurface_t* surf, triangle_draw_func_t near_draw_func, triangle_draw_func_t far_draw_func, mtexinfo_t* texinfo, fixed16_t tex_coord_shift )
@@ -769,7 +809,9 @@ void BuildSurfaceLists(m_Mat4* mat, vec3_t new_cam_pos )
 		}
 	}
 	DrawTree_r( r_worldmodel->nodes, cam_pos );
-	R_PushDlights( r_worldmodel );
+	m_Mat4 worlmodel_lights_transform_mat;
+	worlmodel_lights_transform_mat.Identity();
+	R_PushDlights( r_worldmodel, (float*)&worlmodel_lights_transform_mat );
 
 	width_f= float(vid.width) *65536.0f;
 	width2_f= width_f * 0.5f;

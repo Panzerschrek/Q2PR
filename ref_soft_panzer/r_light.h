@@ -8,7 +8,7 @@ extern "C"
 {
 #endif
 
-void R_PushDlights (model_t *model);
+void R_PushDlights (model_t *model, const float* lights_transform_mat );
 unsigned char* L_GetSurfaceDynamicLightmap( msurface_t* surf );
 void R_LightInit();
 void R_SwapLightmapBuffers();

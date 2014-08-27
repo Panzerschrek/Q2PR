@@ -33,6 +33,6 @@ int DrawWorldSurface( msurface_t* surf, triangle_draw_func_t near_draw_func, tri
 void SetSurfaceMatrix( m_Mat4* mat );
 void SetFov( float fov );
 void SetWorldFrame( int frame );
-void SetClipPlanes( mplane_t* planes, int count );
+void InitFrustrumClipPlanes( m_Mat4* normal_mat, vec3_t transformed_cam_pos );
 
 #endif//R_WORLD_RENDERING_H

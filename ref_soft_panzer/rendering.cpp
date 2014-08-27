@@ -17,7 +17,7 @@ extern "C" swstate_t sw_state;
 
 
 void DrawSpriteEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos );
-void DrawBrushEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos, bool is_aplha );
+void DrawBrushEntity( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam_pos, bool is_aplha );
 void DrawAliasEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos );
 void DrawBeam( entity_t* ent, m_Mat4* mat, vec3_t cam_pos );
 /*
@@ -847,7 +847,7 @@ void Mat4RotateZ(m_Mat4* mat, float a)
 }
 
 
-void DrawEntities(m_Mat4* mat, vec3_t cam_pos, bool alpha_entities )
+void DrawEntities(m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam_pos, bool alpha_entities )
 {
 	entity_t* ent;
 	model_t* model;
@@ -871,7 +871,7 @@ void DrawEntities(m_Mat4* mat, vec3_t cam_pos, bool alpha_entities )
 		else if( model->type == mod_sprite )
 			DrawSpriteEntity( ent, mat, cam_pos );
 		else if( model->type == mod_brush )
-			DrawBrushEntity( ent, mat, cam_pos, alpha_entities );
+			DrawBrushEntity( ent, mat, normal_mat, cam_pos, alpha_entities );
 		else if( model->type == mod_alias )
 			DrawAliasEntity( ent, mat, cam_pos );
 		else
@@ -900,50 +900,6 @@ void InitPlayerFlashlight()
 }
 
 
-void InitClipPlanes( m_Mat4* normal_mat )
-{
-	mplane_t planes[5];
-
-	//near clip plane
-	const float to_rad = 3.1415926535f / 180.0f;
-	float a= (r_newrefdef.viewangles[1]  -180.0f )* to_rad;
-	float b= r_newrefdef.viewangles[0] * to_rad;
-	planes[0].normal[0]= -cosf(a) * cosf(b);
-	planes[0].normal[1]= -sinf(a) * cosf(b);
-	planes[0].normal[2]= -sinf(b);
-
-	vec3_t moved_cam_pos;
-	VectorCopy( r_newrefdef.vieworg, moved_cam_pos );
-	float z_near= 1.0625f * PSR_MIN_ZMIN_FLOAT * float(Q2_UNITS_PER_METER);
-	moved_cam_pos[0]+= planes[0].normal[0] * z_near;
-	moved_cam_pos[1]+= planes[0].normal[1] * z_near;
-	moved_cam_pos[2]+= planes[0].normal[2] * z_near;
-	planes[0].dist= DotProduct(moved_cam_pos, planes[0].normal );
-
-	const float angle_scaler= 1.05f;
-	//top plane
-	a= r_newrefdef.fov_y*0.5f*to_rad*angle_scaler;
-	m_Vec3 tmp_normal( 0.0f, -sinf(a), -cosf(a) );
-	*((m_Vec3*)planes[1].normal)= tmp_normal * *normal_mat;
-	planes[1].dist= DotProduct(r_newrefdef.vieworg, planes[1].normal );
-	//bottom plane
-	a= r_newrefdef.fov_y*0.5f*to_rad*angle_scaler;
-	tmp_normal.x= 0.0f; tmp_normal.y= -sinf(a); tmp_normal.z= cosf(a);
-	*((m_Vec3*)planes[2].normal)= tmp_normal * *normal_mat;
-	planes[2].dist= DotProduct(r_newrefdef.vieworg, planes[2].normal );
-	//left plane
-	a= r_newrefdef.fov_x*0.5f*to_rad*angle_scaler;
-	tmp_normal.x= -cosf(a); tmp_normal.y= -sinf(a); tmp_normal.z= 0.0f;
-	*((m_Vec3*)planes[3].normal)= tmp_normal * *normal_mat;
-	planes[3].dist= DotProduct(r_newrefdef.vieworg, planes[3].normal );
-	//right plane
-	a= r_newrefdef.fov_x*0.5f*to_rad*angle_scaler;
-	tmp_normal.x= cosf(a); tmp_normal.y= -sinf(a); tmp_normal.z= 0.0f;
-	*((m_Vec3*)planes[4].normal)= tmp_normal * *normal_mat;
-	planes[4].dist= DotProduct(r_newrefdef.vieworg, planes[4].normal );
-
-	SetClipPlanes( planes, 5 );
-}
 extern "C" void PANZER_RenderFrame(refdef_t *fd)
 {
 	r_newrefdef= *fd;
@@ -968,7 +924,7 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 
 	if( (fd->rdflags&RDF_NOWORLDMODEL) == 0 )
 	{
-		unsigned char clear_color[]= { 0, 0, 0, 0 };
+		unsigned char clear_color[]= { 245, 16, 251, 0 };
 		command_buffer.current_pos+= ComIn_ClearColorBuffer(
 			(char*)command_buffer.buffer + command_buffer.current_pos, clear_color );
 
@@ -1008,25 +964,24 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 		SetFov(fd->fov_y * to_rad);
 		BuildSurfaceLists(&result, fd->vieworg);
 
-		/*rot_z.Identity();
-		rot_z.RotateZ( -(fd->viewangles[1]  + 90.0f )* to_rad );*/
 		rot_x.RotateX( -fd->viewangles[0] * to_rad );
 		rot_z.RotateZ( -(fd->viewangles[1]  + 90.0f )* to_rad );
 		rot_y.RotateY( -fd->viewangles[2] * to_rad );
 		normal_mat= rot_y * rot_x * rot_z;
-		InitClipPlanes(&normal_mat);
 
+		InitFrustrumClipPlanes(&normal_mat, r_newrefdef.vieworg);
 		SetSurfaceMatrix(&result);
 		DrawWorldTextureChains();
 
 		SetSurfaceMatrix(&result);
-		DrawEntities(&result, fd->vieworg, false );
+		DrawEntities(&result, &normal_mat, fd->vieworg, false );
 
+		InitFrustrumClipPlanes(&normal_mat, r_newrefdef.vieworg);
 		SetSurfaceMatrix(&result);
 		DrawWorldAlphaSurfaces();
 
 		SetSurfaceMatrix(&result);
-		DrawEntities(&result, fd->vieworg, true );
+		DrawEntities(&result, &normal_mat, fd->vieworg, true );
 
 
 		DrawParticles( &result,  fd->particles, fd->num_particles, fd->fov_y * to_rad );

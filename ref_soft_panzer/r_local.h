@@ -670,7 +670,7 @@ void D_DrawSurfaces (void);
 void R_InsertNewEdges (edge_t *edgestoadd, edge_t *edgelist);
 void R_StepActiveU (edge_t *pedge);
 void R_RemoveEdges (edge_t *pedge);
-void R_PushDlights (model_t *model);
+void R_PushDlights (model_t *model, const float* lights_transform_matrix );
 
 extern void R_Surf8Start (void);
 extern void R_Surf8End (void);
