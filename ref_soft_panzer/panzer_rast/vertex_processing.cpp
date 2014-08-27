@@ -494,7 +494,7 @@ int (*DrawBeamTriangleToBuffer)( char* buff )= VertexProcessing::DrawTriangleToB
 < COLOR_CONSTANT, TEXTURE_NONE, LIGHTING_NONE, ADDITIONAL_EFFECT_NONE >;
 
 int (*DrawSkyTriangleToBuffer)( char* buff )= VertexProcessing::DrawTriangleToBuffer
-<COLOR_FROM_TEXTURE, TEXTURE_NEAREST, LIGHTING_NONE, ADDITIONAL_EFFECT_NONE>;
+<COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, LIGHTING_NONE, ADDITIONAL_EFFECT_NONE>;
 
 int (*DrawTexturedModelTriangleToBuffer)(char*buff)= VertexProcessing::DrawTriangleToBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_NEAREST, LIGHTING_PER_VERTEX_COLORED, ADDITIONAL_EFFECT_NONE >;

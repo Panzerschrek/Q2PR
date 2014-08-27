@@ -651,6 +651,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\r_sky.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\r_world_rendering.cpp"
 				>
 			</File>

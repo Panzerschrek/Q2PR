@@ -2737,8 +2737,12 @@ void (*DrawParticleSprite)(int x0, int y0, int x1, int y1, fixed16_t depth)= Dra
 void (*DrawParticleSpriteNoBlend)(int x0, int y0, int x1, int y1, fixed16_t depth)= Draw::DrawSprite
 < TEXTURE_NONE, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, DEPTH_TEST_LESS, true >;
 
-void (*DrawSkyTriangleFromBuffer)( char* buff ) = Draw::DrawTriangleFromBuffer
+void (*DrawSkyTriangleNearest)( char* buff ) = Draw::DrawTriangleFromBuffer
 <COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true>;
+void (*DrawSkyTriangleLinear)( char* buff ) = Draw::DrawTriangleFromBuffer
+<COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true>;
+void (*DrawSkyTriangleFakeFilter)( char* buff ) = Draw::DrawTriangleFromBuffer
+<COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, DEPTH_TEST_LESS, true>;
 
 void (*DrawWorldSprite)(int x0, int y0, int x1, int y1, fixed16_t depth) =
 Draw::DrawSprite<TEXTURE_NEAREST, BLENDING_AVG, ALPHA_TEST_DISCARD_GREATER_HALF, LIGHTING_NONE, DEPTH_TEST_LESS, true >;

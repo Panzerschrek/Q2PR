@@ -109,7 +109,10 @@ extern void (*DrawWorldTriangleTextureFakeFilterPalettizedBlend)(char*buff);
 extern void (*DrawWorldSprite)(int x0, int y0, int x1, int y1, fixed16_t depth);
 
 extern int (*DrawSkyTriangleToBuffer)( char* buff );
-extern void (*DrawSkyTriangleFromBuffer)( char* buff );
+extern void (*DrawSkyTriangleNearest)( char* buff );
+extern void (*DrawSkyTriangleLinear)( char* buff );
+extern void (*DrawSkyTriangleFakeFilter)( char* buff );
+
 
 
 extern int (*DrawTexturedModelTriangleToBuffer)(char*buff);

@@ -23,14 +23,8 @@ typedef struct texture_surfaces_chain_s
 }texture_surfaces_chain_t;
 texture_surfaces_chain_t texture_surfaces_chain;
 
-typedef struct alpha_surfaces_chain_s
-{
-	msurface_t* first_surface;
-	msurface_t* last_surface;
-	int surf_count;
-}alpha_surfaces_chain_t;
-alpha_surfaces_chain_t alpha_surfaces_chain;
-
+surfaces_chain_t alpha_surfaces_chain;
+surfaces_chain_t sky_surfaces_chain;
 
 float width2_f;
 float height2_f;
@@ -228,7 +222,10 @@ triangle_draw_func_t GetWorldFarDrawFuncNoLightmaps( bool is_alpha )
 void InitTextureSurfacesChain()
 {
 	memset( &texture_surfaces_chain, 0, sizeof(texture_surfaces_chain_t) );
-	memset( &alpha_surfaces_chain, 0, sizeof(alpha_surfaces_chain_t) );
+	memset( &alpha_surfaces_chain, 0, sizeof(surfaces_chain_t) );
+	memset( &sky_surfaces_chain, 0, sizeof(surfaces_chain_t) );
+	sky_surfaces_chain.first_surface= sky_surfaces_chain.last_surface= NULL;
+	sky_surfaces_chain.surf_count= 0;
 }
 
 
@@ -243,7 +240,7 @@ void SetFov( float fov )
 }
 
 
-const int max_poly_vertices= 24;
+const int max_poly_vertices= 32;
 mvertex_t* surface_vertices[max_poly_vertices];
 m_Vec3 surface_final_vertices[max_poly_vertices];
 bool surface_plane_pos[max_poly_vertices];
@@ -252,8 +249,9 @@ bool surface_plane_pos[max_poly_vertices];
 1, 2 - left, right
 3, 4 - bottom, top
 */
-mplane_t clip_planes[5+max_poly_vertices];
-mvertex_t tmp_vertices_stack[max_poly_vertices + 8];
+mplane_t clip_planes[5+max_poly_vertices+2];
+mvertex_t tmp_vertices_stack[max_poly_vertices + 16];
+int clip_plane_count;
 int tmp_vertices_stack_pos;
 
 
@@ -378,7 +376,7 @@ int ClipFaceByPlane( int vertex_count, mplane_t* plane )//returns new vertex cou
 int ClipFace( int vertex_count )//returns new vertex count
 {
 	tmp_vertices_stack_pos= 0;
-	for( int i= 0; i< 5; i++ )
+	for( int i= 0; i< clip_plane_count; i++ )
 	{
 		vertex_count= ClipFaceByPlane( vertex_count, clip_planes + i );
 		if( vertex_count == 0 )
@@ -432,6 +430,14 @@ void InitFrustrumClipPlanes( m_Mat4* normal_mat, vec3_t transformed_cam_pos )
 	tmp_normal.x= cosf(a); tmp_normal.y= -sinf(a); tmp_normal.z= 0.0f;
 	*((m_Vec3*)clip_planes[4].normal)= tmp_normal * *normal_mat;
 	clip_planes[4].dist= DotProduct(transformed_cam_pos, clip_planes[4].normal );
+
+	clip_plane_count= 5;
+}
+
+mplane_t* SetAdditionalClipPlanes( int plane_count )
+{
+	clip_plane_count= 5 + plane_count;
+	return clip_planes + 5;
 }
 
 
@@ -472,7 +478,7 @@ int DrawWorldSurface( msurface_t* surf, triangle_draw_func_t near_draw_func, tri
 	if( (surf->texinfo->flags&SURF_FLOWING) != 0 )
 	{
 		int tc_delta= ( int( -0.5f * r_newrefdef.time * float(texinfo->image->width) ) & (texinfo->image->width*4-1) )<<16;
-		for(int e= 0; e< surf->numedges; e++ )
+		for(int e= 0; e< final_vertex_count; e++ )
 			tc_u[e]+= tc_delta;
 	}
 
@@ -714,14 +720,27 @@ void DrawTree_r( mnode_t* node, vec3_t cam_pos )
 
 			if( surf->texinfo == NULL )
 				continue;
-			if( (surf->flags & (SURF_DRAWSKYBOX|SURF_DRAWBACKGROUND|SURF_DRAWSKY)) !=0 )
-				continue;
-			if( (surf->texinfo->flags&(SURF_NODRAW)) != 0 )//temporary, discard water surfaces
-				continue;
 			if(surf->nextalphasurface != NULL )//surface already in list
 				continue;
 
-			if( (surf->texinfo->flags&(SURF_TRANS66|SURF_TRANS33)) !=0 )
+			if( (surf->flags & (SURF_DRAWSKY) ) != 0 )
+			{
+				if( sky_surfaces_chain.first_surface == NULL )
+				{
+					surf->nextalphasurface= (msurface_t*)2;//tmp
+					sky_surfaces_chain.first_surface= sky_surfaces_chain.last_surface= surf;
+					sky_surfaces_chain.surf_count= 1;
+				}
+				else
+				{
+					surf->nextalphasurface= (msurface_t*)2;//tmp
+					sky_surfaces_chain.last_surface->nextalphasurface= surf;
+					sky_surfaces_chain.last_surface= surf;
+					sky_surfaces_chain.surf_count++;
+				}
+				continue;
+			}//if sky
+			else if( (surf->texinfo->flags&(SURF_TRANS66|SURF_TRANS33)) !=0 )
 			{
 				if( alpha_surfaces_chain.first_surface == NULL )
 				{
@@ -753,7 +772,7 @@ void DrawTree_r( mnode_t* node, vec3_t cam_pos )
 				texture_surfaces_chain.last_surface[tex_ind]= surf;
 			}
 			//surf->nextalphasurface= NULL;
-		}
+		}//for lef surfaces
 		return;
 	}
 

@@ -17,6 +17,13 @@
 
 typedef  void(*triangle_draw_func_t)(char*);
 
+typedef struct surfaces_chain_s
+{
+	msurface_t* first_surface;
+	msurface_t* last_surface;
+	int surf_count;
+}surfaces_chain_t;
+
 
 void BuildSurfaceLists(m_Mat4* mat, vec3_t cam_pos );
 void DrawWorldTextureChains();
@@ -34,5 +41,7 @@ void SetSurfaceMatrix( m_Mat4* mat );
 void SetFov( float fov );
 void SetWorldFrame( int frame );
 void InitFrustrumClipPlanes( m_Mat4* normal_mat, vec3_t transformed_cam_pos );
+int  ClipFace( int vertex_coint );
+mplane_t* SetAdditionalClipPlanes( int plane_count );
 
 #endif//R_WORLD_RENDERING_H

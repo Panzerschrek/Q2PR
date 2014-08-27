@@ -53,12 +53,6 @@ CharBuffer* back_chars;
 Texture* console_tex= NULL;
 void DrawCharString( int x, int y, const char* str );
 
-/*
-----sky buffer-------
-*/
-Texture sky_textures[6];
-image_t sky_images[6];
-bool is_any_sky= false;
 
 
 
@@ -188,8 +182,6 @@ extern "C" void PR_InitRendering()
 
 	front_chars->char_count= 0;
 	back_chars->char_count= 0;
-
-	memset( sky_images, sizeof(sky_images), 0 );
 
 	command_buffer.buffer= Com_ResizeCommandBuffer( NULL, 0, 1024*1024*3, &command_buffer.size );
 	back_command_buffer.buffer= Com_ResizeCommandBuffer( NULL, 0, 1024*1024*3, &back_command_buffer.size );
@@ -533,224 +525,7 @@ extern "C" void PANZER_DrawFill(int x, int y, int w, int h, int c)
 	command_buffer.current_pos+= sizeof(int)*5;
 }
 
-extern "C" void PANZER_SetSky(char *name, float rotate, vec3_t axis)
-{
-	static const char*const suf[6] = {"ft", "up", "lf", "bk", "dn", "rt"};
-	static const int	r_skysideimage[6] = {5, 2, 4, 1, 0, 3};
-	char	pathname[MAX_QPATH];
 
-	for( int i= 0; i< 6; i++ )
-	{
-			Com_sprintf (pathname, sizeof(pathname), "env/%s%s.tga", name, suf[i]);
-			if( sky_images[i].pixels[0] != NULL )
-				free(sky_images[i].pixels[0]);
-			LoadTGA( pathname, &sky_images[i].pixels[0], &sky_images[i].width, &sky_images[i].height );
-			sky_textures[i].Create( sky_images[i].width, sky_images[i].height, false, NULL, sky_images[i].pixels[0] );
-	}
-	is_any_sky= true;
-}
-
-
-
-void DrawSkyBox( const m_Mat4* mat )
-{
-	using namespace VertexProcessing;
-	static const float cube_vertices[]= { 
-		 1.0f,  1.0f,  1.0f,
-		 1.0f,  1.0f, -1.0f,
-		 1.0f, -1.0f,  1.0f,
-		 1.0f, -1.0f, -1.0f,
-		-1.0f,  1.0f,  1.0f,
-		-1.0f,  1.0f, -1.0f,
-		-1.0f, -1.0f,  1.0f,
-		-1.0f, -1.0f, -1.0f };
-		
-	static const int cube_triangles_indeces[]= {
-	3,1,0, 3,0,2,//x+
-	5,4,0, 5,0,1,//y+
-	7,5,1, 7,1,3,//z-
-	6,4,5, 6,5,7,//x-
-	6,7,3, 6,3,2,//y-
-	2,0,4, 2,4,6//z+ 
-	 };
-	static const int cube_triangles_tc[]= {
-		1,1, 1,0, 0,0,  1,1, 0,0, 0,1,//check
-		0,0, 0,1, 1,1,  0,0, 1,1, 1,0,//check
-		1,1, 1,0, 0,0,  1,1, 0,0, 0,1,//check
-		1,1, 1,0, 0,0,  1,1, 0,0, 0,1,//check
-		0,0, 0,1, 1,1,  0,0, 1,1, 1,0,//check
-		1,1, 1,0, 0,0,  1,1, 0,0, 0,1,//chrck
-	};
-
-
-	m_Vec3 transformed_vertices[8];
-	float transformed_inv_w[8];
-	m_Mat4 skybox_scale, final_mat;
-	skybox_scale.Identity();
-	skybox_scale.Scale( 64.0f * 16.0f );
-	final_mat = skybox_scale * *mat;
-	for( int i= 0; i< 8; i++ )
-	{
-		m_Vec3 v= *(((m_Vec3*)cube_vertices) + i);
-		transformed_vertices[i]= v * final_mat;
-		transformed_inv_w[i]= 1.0f / transformed_vertices[i].z;//1.0f / mat->Vec3MatMulW(v);
-	}
-
-	float vid_width2= float(vid.width) * 0.5f;
-	float vid_height2= float(vid.height) * 0.5f;
-
-	int tex_scaler= sky_textures[0].SizeXLog2() + 16;
-	for( int i= 0; i< 12; i++ )
-	{
-		float interp;
-		if( (i&1) == 0 )
-		{	
-			command_buffer.current_pos+= ComIn_SetTexture( 
-			command_buffer.current_pos + (char*)command_buffer.buffer, &sky_textures[i>>1] );
-		}
-		int ind[]= { cube_triangles_indeces[i*3], cube_triangles_indeces[i*3+1], cube_triangles_indeces[i*3+2] };
-		float z[]= { 1.0f / transformed_inv_w[ind[0]], 1.0f / transformed_inv_w[ind[1]], 1.0f / transformed_inv_w[ind[2]] };
-		int culled_vertices= CullTriangleByZNearPlane( z[0], z[1], z[2] );
-		if( culled_vertices == 3 )
-			continue;
-
-		((int*)((char*)command_buffer.buffer + command_buffer.current_pos))[0]= COMMAND_DRAW_TRIANGLE;
-		command_buffer.current_pos+= sizeof(int);
-		DrawTriangleCall* call= (DrawTriangleCall*)(((char*)command_buffer.buffer) + command_buffer.current_pos);
-		call->triangle_count= 0;
-		call->vertex_size= sizeof(int)*3 + sizeof(int)*2;
-		call->DrawFromBufferFunc= DrawSkyTriangleFromBuffer;
-		m_Vec3* v[]= { transformed_vertices + ind[0], transformed_vertices + ind[1], transformed_vertices + ind[2] };
-		if( culled_vertices == 0 )
-		{
-			triangle_in_vertex_xy[0]= ( v[0]->x * transformed_inv_w[ind[0]] + 1.0f ) * vid_width2 *65536.0f;
-			triangle_in_vertex_xy[1]= ( v[0]->y * transformed_inv_w[ind[0]] + 1.0f ) * vid_height2*65536.0f;
-			triangle_in_vertex_xy[2]= ( v[1]->x * transformed_inv_w[ind[1]] + 1.0f ) * vid_width2 *65536.0f;
-			triangle_in_vertex_xy[3]= ( v[1]->y * transformed_inv_w[ind[1]] + 1.0f ) * vid_height2*65536.0f;
-			triangle_in_vertex_xy[4]= ( v[2]->x * transformed_inv_w[ind[2]] + 1.0f ) * vid_width2 *65536.0f;
-			triangle_in_vertex_xy[5]= ( v[2]->y * transformed_inv_w[ind[2]] + 1.0f ) * vid_height2*65536.0f;
-			triangle_in_vertex_z[0]= int( 65536.0f * z[0] );
-			triangle_in_vertex_z[1]= int( 65536.0f * z[1] );
-			triangle_in_vertex_z[2]= int( 65536.0f * z[2] );
-			triangle_in_tex_coord[0]= (cube_triangles_tc[i*6  ])<<tex_scaler;
-			triangle_in_tex_coord[1]= (cube_triangles_tc[i*6+1])<<tex_scaler;
-			triangle_in_tex_coord[2]= (cube_triangles_tc[i*6+2])<<tex_scaler;
-			triangle_in_tex_coord[3]= (cube_triangles_tc[i*6+3])<<tex_scaler;
-			triangle_in_tex_coord[4]= (cube_triangles_tc[i*6+4])<<tex_scaler;
-			triangle_in_tex_coord[5]= (cube_triangles_tc[i*6+5])<<tex_scaler;
-
-			char* buff= ((char*)call) + sizeof(DrawTriangleCall);
-			if( DrawSkyTriangleToBuffer(buff) != 0 )
-				call->triangle_count++;
-		}
-		else if( culled_vertices == 2 )
-		{
-			//m_Vec3* front_v= transformed_vertices + ind[ cull_passed_vertices[0] ];
-			triangle_in_vertex_xy[0]= ( v[ cull_passed_vertices[0] ]->x * transformed_inv_w[ind[cull_passed_vertices[0]]] + 1.0f ) * vid_width2;
-			triangle_in_vertex_xy[1]= ( v[ cull_passed_vertices[0] ]->y * transformed_inv_w[ind[cull_passed_vertices[0]]] + 1.0f ) * vid_height2;
-			triangle_in_vertex_z[0]= int( 65536.0f * z[cull_passed_vertices[0]]);
-			triangle_in_tex_coord[0]= (cube_triangles_tc[i*6+cull_passed_vertices[0]*2  ])<<tex_scaler;
-			triangle_in_tex_coord[1]= (cube_triangles_tc[i*6+cull_passed_vertices[0]*2+1])<<tex_scaler;
-			
-			const float inv_interp_z= 1.0f / PSR_MIN_ZMIN_FLOAT;
-			interp= v[ cull_passed_vertices[0] ]->x * cull_new_vertices_interpolation_k[0] + 
-					v[ cull_lost_vertices[0] ]->x * ( 1.0f - cull_new_vertices_interpolation_k[0] );
-			triangle_in_vertex_xy[2]= ( inv_interp_z * interp + 1.0f ) * vid_width2;
-			interp= v[ cull_passed_vertices[0] ]->y * cull_new_vertices_interpolation_k[0] + 
-					v[ cull_lost_vertices[0] ]->y * ( 1.0f - cull_new_vertices_interpolation_k[0] );
-			triangle_in_vertex_xy[3]= ( inv_interp_z * interp + 1.0f ) * vid_height2;
-			interp= v[ cull_passed_vertices[0] ]->x * cull_new_vertices_interpolation_k[1] + 
-					v[ cull_lost_vertices[1] ]->x * ( 1.0f - cull_new_vertices_interpolation_k[1] );
-			triangle_in_vertex_xy[4]= ( inv_interp_z * interp + 1.0f ) * vid_width2;
-			interp= v[ cull_passed_vertices[0] ]->y * cull_new_vertices_interpolation_k[1] + 
-					v[ cull_lost_vertices[1] ]->y * ( 1.0f - cull_new_vertices_interpolation_k[1] );
-			triangle_in_vertex_xy[5]= ( inv_interp_z * interp + 1.0f ) * vid_height2;
-
-			triangle_in_vertex_z[1]= PSR_MIN_ZMIN;//int(interp_z*65536.0f);
-			triangle_in_vertex_z[2]= PSR_MIN_ZMIN;//int(interp_z*65536.0f);
-
-			float f_tex_scaler= float(1<<tex_scaler);
-			interp= float(cube_triangles_tc[i*6+cull_passed_vertices[0]*2  ]) * cull_new_vertices_interpolation_k[0] +
-					float(cube_triangles_tc[i*6+  cull_lost_vertices[0]*2  ]) * ( 1.0f - cull_new_vertices_interpolation_k[0] );
-			triangle_in_tex_coord[2]= int(interp*f_tex_scaler);
-			interp= float(cube_triangles_tc[i*6+cull_passed_vertices[0]*2+1]) * cull_new_vertices_interpolation_k[0] +
-					float(cube_triangles_tc[i*6+  cull_lost_vertices[0]*2+1]) * ( 1.0f - cull_new_vertices_interpolation_k[0] );
-			triangle_in_tex_coord[3]= int(interp*f_tex_scaler);
-			interp= float(cube_triangles_tc[i*6+cull_passed_vertices[0]*2  ]) * cull_new_vertices_interpolation_k[1] +
-					float(cube_triangles_tc[i*6+  cull_lost_vertices[1]*2  ]) * ( 1.0f - cull_new_vertices_interpolation_k[1] );
-			triangle_in_tex_coord[4]= int(interp*f_tex_scaler);
-			interp= float(cube_triangles_tc[i*6+cull_passed_vertices[0]*2+1]) * cull_new_vertices_interpolation_k[1] +
-					float(cube_triangles_tc[i*6+  cull_lost_vertices[1]*2+1]) * ( 1.0f - cull_new_vertices_interpolation_k[1] );
-			triangle_in_tex_coord[5]= int(interp*f_tex_scaler);
-
-
-			char* buff= ((char*)call) + sizeof(DrawTriangleCall);
-			//if( DrawSkyTriangleToBuffer(buff) != 0 )
-			//	call->triangle_count++;
-		}
-		else//if( culled_vertices == 1 )
-		{
-			triangle_in_vertex_xy[0]= ( v[ cull_passed_vertices[0] ]->x * transformed_inv_w[ind[cull_passed_vertices[0]]] + 1.0f ) * vid_width2;
-			triangle_in_vertex_xy[1]= ( v[ cull_passed_vertices[0] ]->y * transformed_inv_w[ind[cull_passed_vertices[0]]] + 1.0f ) * vid_height2;
-			triangle_in_vertex_z[0]= int( 65536.0f * z[cull_passed_vertices[0]]);
-			triangle_in_tex_coord[0]= (cube_triangles_tc[i*6+cull_passed_vertices[0]*2  ])<<tex_scaler;
-			triangle_in_tex_coord[1]= (cube_triangles_tc[i*6+cull_passed_vertices[0]*2+1])<<tex_scaler;
-
-			triangle_in_vertex_xy[2]= ( v[ cull_passed_vertices[1] ]->x * transformed_inv_w[ind[cull_passed_vertices[1]]] + 1.0f ) * vid_width2;
-			triangle_in_vertex_xy[3]= ( v[ cull_passed_vertices[1] ]->y * transformed_inv_w[ind[cull_passed_vertices[1]]] + 1.0f ) * vid_height2;
-			triangle_in_vertex_z[1]= int( 65536.0f * z[cull_passed_vertices[1]]);
-			triangle_in_tex_coord[2]= (cube_triangles_tc[i*6+cull_passed_vertices[1]*2  ])<<tex_scaler;
-			triangle_in_tex_coord[3]= (cube_triangles_tc[i*6+cull_passed_vertices[1]*2+1])<<tex_scaler;
-
-			const float inv_interp_z= 1.0f / PSR_MIN_ZMIN_FLOAT;
-			interp= v[ cull_passed_vertices[0] ]->x * cull_new_vertices_interpolation_k[0] + 
-					v[ cull_lost_vertices[0] ]->x * ( 1.0f - cull_new_vertices_interpolation_k[0] );
-			triangle_in_vertex_xy[4]= ( inv_interp_z * interp + 1.0f ) * vid_width2;
-			interp= v[ cull_passed_vertices[0] ]->y * cull_new_vertices_interpolation_k[0] + 
-					v[ cull_lost_vertices[0] ]->y * ( 1.0f - cull_new_vertices_interpolation_k[0] );
-			triangle_in_vertex_xy[5]= ( inv_interp_z * interp + 1.0f ) * vid_height2;
-
-			triangle_in_vertex_z[2]= PSR_MIN_ZMIN;//int(interp_z*65536.0f);
-
-			float f_tex_scaler= float(1<<tex_scaler);
-			interp= float(cube_triangles_tc[i*6+cull_passed_vertices[0]*2  ]) * cull_new_vertices_interpolation_k[0] +
-					float(cube_triangles_tc[i*6+  cull_lost_vertices[0]*2  ]) * ( 1.0f - cull_new_vertices_interpolation_k[0] );
-			triangle_in_tex_coord[4]= int(interp*f_tex_scaler);
-			interp= float(cube_triangles_tc[i*6+cull_passed_vertices[0]*2+1]) * cull_new_vertices_interpolation_k[0] +
-					float(cube_triangles_tc[i*6+  cull_lost_vertices[0]*2+1]) * ( 1.0f - cull_new_vertices_interpolation_k[0] );
-			triangle_in_tex_coord[5]= int(interp*f_tex_scaler);
-
-			char* buff= ((char*)call) + sizeof(DrawTriangleCall);
-			/*if( DrawSkyTriangleToBuffer(buff) != 0 )
-			{
-				buff+= call->vertex_size*4;
-				call->triangle_count++;
-			}*/
-
-			interp= v[ cull_passed_vertices[1] ]->x * cull_new_vertices_interpolation_k[1] + 
-					v[ cull_lost_vertices[0] ]->x * ( 1.0f - cull_new_vertices_interpolation_k[1] );
-			triangle_in_vertex_xy[0]= ( inv_interp_z * interp + 1.0f ) * vid_width2;
-			interp= v[ cull_passed_vertices[1] ]->y * cull_new_vertices_interpolation_k[1] + 
-					v[ cull_lost_vertices[0] ]->y * ( 1.0f - cull_new_vertices_interpolation_k[1] );
-			triangle_in_vertex_xy[1]= ( inv_interp_z * interp + 1.0f ) * vid_height2;
-
-			triangle_in_vertex_z[0]= PSR_MIN_ZMIN;//int(interp_z[1]*65536.0f);
-
-			interp= float(cube_triangles_tc[i*6+cull_passed_vertices[1]*2  ]) * cull_new_vertices_interpolation_k[1] +
-					float(cube_triangles_tc[i*6+  cull_lost_vertices[0]*2  ]) * ( 1.0f - cull_new_vertices_interpolation_k[1] );
-			triangle_in_tex_coord[0]= int(interp*f_tex_scaler);
-			interp= float(cube_triangles_tc[i*6+cull_passed_vertices[1]*2+1]) * cull_new_vertices_interpolation_k[1] +
-					float(cube_triangles_tc[i*6+  cull_lost_vertices[0]*2+1]) * ( 1.0f - cull_new_vertices_interpolation_k[1] );
-			triangle_in_tex_coord[1]= int(interp*f_tex_scaler);
-			
-			//if( DrawSkyTriangleToBuffer(buff)!=0 )
-			//	call->triangle_count++;
-		}
-		command_buffer.current_pos+= sizeof(DrawTriangleCall) + call->vertex_size * 4 * call->triangle_count;
-	}//for skybox triangles
-
-
-}
 
 
 void InitParticles()
@@ -900,6 +675,10 @@ void InitPlayerFlashlight()
 }
 
 
+
+extern void DrawSkyBox( const m_Mat4* rot_mat, vec3_t cam_pos );
+
+
 extern "C" void PANZER_RenderFrame(refdef_t *fd)
 {
 	r_newrefdef= *fd;
@@ -933,7 +712,7 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 		command_buffer.current_pos+= ComIn_SetConstantTime(
 			(char*)command_buffer.buffer + command_buffer.current_pos, int(r_newrefdef.time*65536.0f*64.0f) );
 
-		m_Mat4 pers, rot_x, rot_y, rot_z, result, scale, basis_change, shift, normal_mat;
+		m_Mat4 pers, rot_x, rot_y, rot_z, result, scale, basis_change, shift, normal_mat, sky_mat;
 
 		const float to_rad = 3.1415926535f / 180.0f;
 		m_Vec3 pos( -fd->vieworg[0], -fd->vieworg[1], -fd->vieworg[2] );
@@ -957,7 +736,8 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 		pers[0]= 1.0f / tan( fd->fov_x * to_rad * 0.5f );
 		pers[5]= 1.0f / tan( fd->fov_y * to_rad * 0.5f );
 
-		result=  scale * rot_z * rot_x * rot_y * basis_change * pers;
+		//result= scale * rot_z * rot_x * rot_y * basis_change * pers;
+		sky_mat= scale * rot_z * rot_x * rot_y * basis_change * pers;
 		
 
 		result= shift * scale * rot_z * rot_x * rot_y * basis_change * pers;
@@ -975,6 +755,10 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 
 		SetSurfaceMatrix(&result);
 		DrawEntities(&result, &normal_mat, fd->vieworg, false );
+
+		static float sky_pos[]= { 0.0f, 0.0f, 0.0f };
+		InitFrustrumClipPlanes(&normal_mat, sky_pos);
+		DrawSkyBox(&sky_mat, fd->vieworg);
 
 		InitFrustrumClipPlanes(&normal_mat, r_newrefdef.vieworg);
 		SetSurfaceMatrix(&result);

@@ -413,6 +413,8 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 		ds >>= 4;
 		dt >>= 4;
 
+		int dds= ds&15; int ddt= dt&15;
+
 		lightmap = surf->samples;
 		pointcolor[0]= 0.0f; pointcolor[1]= 0.0f; pointcolor[2]= 0.0f;
 		if (lightmap)
