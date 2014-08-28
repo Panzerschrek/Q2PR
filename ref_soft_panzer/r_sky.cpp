@@ -18,6 +18,7 @@ extern "C" void PANZER_SetSky(char *name, float rotate, vec3_t axis)
 {
 	sky_rotation_speed= rotate;
 	VectorCopy( axis, sky_rotation_axis );
+	VectorNormalize(sky_rotation_axis);
 
 	if( strcmp( current_sky_name, name ) != 0 )
 	{
@@ -75,6 +76,9 @@ static const float cube_sides_texture_basises[]=
 	 1.0f,  0.0f, 0.0f,  0.0f,  0.0f, -1.0f,//y+
 };
 
+static float transformed_cube_vertices[ sizeof(cube_vertices)/sizeof(float) ];
+static float transformed_cube_sides_texture_basises[ sizeof(cube_sides_texture_basises)/sizeof(float) ];
+
 
 extern mvertex_t* surface_vertices[];
 extern m_Vec3 surface_final_vertices[];
@@ -90,6 +94,24 @@ static float		 sky_tex_scaler;
 static int			 sky_tex_shift;
 triangle_draw_func_t sky_draw_func;
 
+
+
+void TransformSkybox()
+{
+	if( sky_rotation_speed< 0.01f )
+	{
+		memcpy( transformed_cube_vertices, cube_vertices, sizeof(transformed_cube_vertices ) );
+		memcpy( transformed_cube_sides_texture_basises, cube_sides_texture_basises, sizeof(cube_sides_texture_basises) );
+	}
+	else
+	{
+		for( int i= 0; i< 8; i++ )
+			RotatePointAroundVector( transformed_cube_vertices + i*3, sky_rotation_axis, cube_vertices + i*3, r_newrefdef.time * sky_rotation_speed );
+		for( int i= 0; i< 12; i++ )
+			RotatePointAroundVector( transformed_cube_sides_texture_basises + i*3, sky_rotation_axis, cube_sides_texture_basises + i*3, r_newrefdef.time * sky_rotation_speed  );
+	}
+
+}
 void GetSkyDrawFuncAndTexParameters()
 {
 	sky_tex_scaler= float( sky_textures[0].SizeX() ) * (65536.0f * 0.5f  / float(SKY_SIZE) );
@@ -127,7 +149,7 @@ void DrawSkyBoxFaces( const m_Mat4* rot_mat, float dst_to_skybox )
 	for( int i= 0; i< 6; i++ )//for faces
 	{
 		for( int v= 0; v< 4; v++ )
-			surface_vertices[v]= (mvertex_t*)(cube_vertices + cube_faces_indeces[i*4+v]*3 );
+			surface_vertices[v]= (mvertex_t*)(transformed_cube_vertices + cube_faces_indeces[i*4+v]*3 );
 		
 		int face_final_vertices= ClipFace(4);
 		if( face_final_vertices == 0 )
@@ -135,7 +157,7 @@ void DrawSkyBoxFaces( const m_Mat4* rot_mat, float dst_to_skybox )
 
 		for( int v= 0; v< face_final_vertices; v++ )
 		{
-			const float* basis= cube_sides_texture_basises + i*6;
+			const float* basis= transformed_cube_sides_texture_basises + i*6;
 			tc_u[v]= fixed16_t( DotProduct( surface_vertices[v]->position, basis ) * sky_tex_scaler ) + sky_tex_shift;
 			basis+= 3;
 			tc_v[v]= fixed16_t( DotProduct( surface_vertices[v]->position, basis ) * sky_tex_scaler ) + sky_tex_shift;
@@ -207,6 +229,7 @@ void DrawSkyBox( const m_Mat4* rot_mat, vec3_t cam_pos )
 		return;
 
 	GetSkyDrawFuncAndTexParameters();
+	TransformSkybox();
 
 	msurface_t* surf= sky_surfaces_chain.first_surface;
 
