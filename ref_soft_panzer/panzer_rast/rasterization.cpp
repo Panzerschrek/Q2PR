@@ -1143,6 +1143,8 @@ void DrawTriangleUp()
 			depth_buffer_t depth_z;
 			if( additional_effect_mode == ADDITIONAL_EFFECT_DEPTH_HACK ) depth_z= final_z >> (PSR_DEPTH_SCALER_LOG2+PSR_DEPTH_HACK_SCALER);
 			else depth_z= final_z >> PSR_DEPTH_SCALER_LOG2;
+			//TODO - write invert z to buffer
+			//depth_z= 65535 - (line_inv_z >> ( PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 + PSR_INV_MIN_ZMIN_LOG2 ) );
             if( depth_test_mode != DEPTH_TEST_NONE )
             {
                 if( depth_test_mode == DEPTH_TEST_LESS )

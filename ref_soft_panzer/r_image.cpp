@@ -10,25 +10,22 @@ extern "C" void R_LoadWal (char *name, image_t* image );
 #define	MAX_RIMAGES	1024
 image_t		r_images[MAX_RIMAGES];
 image_t		white_image;
-Texture textures[MAX_RIMAGES];
+Texture		textures[MAX_RIMAGES];
 Texture		white_texture;
 int			numr_images;
 
 void InitWhiteImage()
 {
-	white_image.height= 4;
-	white_image.width= 4;
-	white_image.pixels[0]= (byte*) malloc(4*4);
+	const int white_tex_size= 16;
 
-	static const unsigned char white_img_data[]=
-	{
-		255,255,255,255, 255,255,255,255, 255,255,255,255, 255,255,255,255,
-		255,255,255,255, 255,255,255,255, 255,255,255,255, 255,255,255,255,
-		255,255,255,255, 255,255,255,255, 255,255,255,255, 255,255,255,255,
-		255,255,255,255, 255,255,255,255, 255,255,255,255, 255,255,255,255
-	};
+	white_image.height= white_tex_size;
+	white_image.width= white_tex_size;
+	white_image.pixels[0]= (byte*) malloc(white_tex_size*white_tex_size);
 
-	white_texture.Create( 4, 4, false, NULL, white_img_data, false );
+	static unsigned char white_img_data[ white_tex_size * white_tex_size * 4 ];
+	memset( white_img_data, 128, sizeof(white_img_data) );
+
+	white_texture.Create( white_tex_size, white_tex_size, false, NULL, white_img_data, Texture::RESIZE_NO );
 }
 
 
@@ -140,12 +137,27 @@ extern "C" image_t	*R_FindImage (char *name, imagetype_t type)
 		
 		bool need_build_palettized_lods= r_palettized_textures->value != 0.0f && type == it_wall;
 		int t= img - r_images;
-		textures[t].Create( img->width, img->height, true, (unsigned char*)d_8to24table, img->pixels[0], need_resize_to_pot, need_build_palettized_lods );
+
+		Texture::ResizeMode resize_mode;
+		if( need_resize_to_pot )
+		{
+			if( type == it_skin )
+				resize_mode= Texture::RESIZE_FILL;
+			else
+				resize_mode= Texture::RESIZE_STRETCH;
+		}
+		else
+			resize_mode= Texture::RESIZE_NO;
+
+		textures[t].Create( img->width, img->height,
+			true, (unsigned char*)d_8to24table,
+			img->pixels[0],
+			resize_mode, need_build_palettized_lods );
 
 		if( need_convert_to_rgba  || r_palettized_textures->value == 0.0f )
 		{
 			textures[t].Convert2RGBAFromPlaettized();
-			if( type == it_pic )//only pics has alpha
+			if( img->transparent )
 			{
 				int alpha_color= d_8to24table[255];
 				textures[t].SetColorKeyToAlpha( (unsigned char*)&alpha_color, 255 );

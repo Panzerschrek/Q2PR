@@ -486,10 +486,11 @@ void CalculateAndShowFPS()
 
 
 	char fps_str[128];
-	sprintf( fps_str, "fps: %d\n %dms\ntotal: %2.3f\nfrontend: %3.2f%%\n", fps_calc.last_fps, dt * 1000 / CLOCKS_PER_SEC,
-		(current_time == fps_calc.start_time) ? 60 : (float(CLOCKS_PER_SEC*fps_calc.total_frames)/float(current_time-fps_calc.start_time)),
-		float(div) / 1024.0f * 100.0f );
-	DrawCharString( vid.width - 10 * 16, 8, fps_str );
+	sprintf( fps_str, "fps: %d\n%dms\ntotal: %2.3f\n",
+		fps_calc.last_fps, dt * 1000 / CLOCKS_PER_SEC,
+		(current_time == fps_calc.start_time) ? 60 : (float(CLOCKS_PER_SEC*fps_calc.total_frames)/float(current_time-fps_calc.start_time))
+		);
+	DrawCharString( vid.width - 14 * 8, 8, fps_str );
 
 	fps_calc.frames++;
 }
@@ -703,16 +704,16 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 
 	if( (fd->rdflags&RDF_NOWORLDMODEL) == 0 )
 	{
-		unsigned char clear_color[]= { 245, 16, 251, 0 };
+		/*unsigned char clear_color[]= { 245, 16, 251, 0 };
 		command_buffer.current_pos+= ComIn_ClearColorBuffer(
-			(char*)command_buffer.buffer + command_buffer.current_pos, clear_color );
+			(char*)command_buffer.buffer + command_buffer.current_pos, clear_color );*/
 
 		command_buffer.current_pos+= ComIn_SetTexturePaletteRaw(
 			(char*)command_buffer.buffer + command_buffer.current_pos, (unsigned char*)d_8to24table );
 		command_buffer.current_pos+= ComIn_SetConstantTime(
 			(char*)command_buffer.buffer + command_buffer.current_pos, int(r_newrefdef.time*65536.0f*64.0f) );
 
-		m_Mat4 pers, rot_x, rot_y, rot_z, result, scale, basis_change, shift, normal_mat, sky_mat;
+		m_Mat4 pers, rot_x, rot_y, rot_z, result, scale, basis_change, shift, normal_mat, sky_mat, sky_rot;
 
 		const float to_rad = 3.1415926535f / 180.0f;
 		m_Vec3 pos( -fd->vieworg[0], -fd->vieworg[1], -fd->vieworg[2] );
@@ -736,20 +737,21 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 		pers[0]= 1.0f / tan( fd->fov_x * to_rad * 0.5f );
 		pers[5]= 1.0f / tan( fd->fov_y * to_rad * 0.5f );
 
-		//result= scale * rot_z * rot_x * rot_y * basis_change * pers;
 		sky_mat= scale * rot_z * rot_x * rot_y * basis_change * pers;
 		
 
 		result= shift * scale * rot_z * rot_x * rot_y * basis_change * pers;
 		SetFov(fd->fov_y * to_rad);
-		BuildSurfaceLists(&result, fd->vieworg);
 
+		
 		rot_x.RotateX( -fd->viewangles[0] * to_rad );
 		rot_z.RotateZ( -(fd->viewangles[1]  + 90.0f )* to_rad );
 		rot_y.RotateY( -fd->viewangles[2] * to_rad );
 		normal_mat= rot_y * rot_x * rot_z;
 
 		InitFrustrumClipPlanes(&normal_mat, r_newrefdef.vieworg);
+		BuildSurfaceLists(&result, fd->vieworg);
+
 		SetSurfaceMatrix(&result);
 		DrawWorldTextureChains();
 

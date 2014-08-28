@@ -699,7 +699,6 @@ next_surface:
 			if( surf == surf_last )
 				break;
 			surf= surf->nextalphasurface;
-			
 		};//for chain
 	}//for textures
 
@@ -708,37 +707,66 @@ next_surface:
 	DrawCharString( 8, 64, triangles_str );*/
 }
 
+static int surfaces_pushed= 0;
+
 void DrawTree_r( mnode_t* node, vec3_t cam_pos )
 {
-	if( node->contents != -1 )
-	{
-		mleaf_t* leaf= (mleaf_t*)node;
-		msurface_t** surfaces= leaf->firstmarksurface;
-		for( int s= 0; s< leaf->nummarksurfaces; s++)
-		{
-			msurface_t* surf= surfaces[s];
+	if (node->contents == CONTENTS_SOLID)
+		return;		// solid
 
+	if (node->visframe != r_visframecount)
+		return;
+
+	if( node->contents == CONTENTS_NODE )
+	{
+		//reject node, if it behind frustrum plane. approximate node by sphere
+		float node_center[3];
+		float node_diagonal[3];
+		for( int i= 0; i< 3; i++ )
+		{
+			node_center[i]= float(node->minmaxs[i] + node->minmaxs[i+3]) * 0.5f;
+			node_diagonal[i]= float(node->minmaxs[i+3] - node->minmaxs[i]);
+		}
+		float neg_node_radius= -0.5f * sqrtf( DotProduct(node_diagonal,node_diagonal) );
+		for( int i= 0; i< 5; i++ )
+		{
+			mplane_t* plane= clip_planes + i;
+			float dst_to_clip_plane= DotProduct( node_center, plane->normal ) - plane->dist;
+			if( dst_to_clip_plane < neg_node_radius )
+				return;
+		}
+
+		int front, back;
+		float* normal= node->plane->normal;
+		//DO NOT CHANGE THIS!!! THIS IS BSP SORTING ORDER
+		if( DotProduct(normal, cam_pos) <= node->plane->dist )
+			front= 1;
+		else
+			front= 0;
+		back= 1 - front;
+
+		if( node->children[front] != NULL )
+			if( node->children[front]->visframe == r_visframecount )
+				DrawTree_r( node->children[front], cam_pos );
+
+
+		msurface_t* surf= r_worldmodel->surfaces + node->firstsurface;
+		for( int s= 0; s< node->numsurfaces; s++, surf++ )
+		{
 			if( surf->texinfo == NULL )
 				continue;
-			if(surf->nextalphasurface != NULL )//surface already in list
-				continue;
 
+			surfaces_pushed++;
 			if( (surf->flags & (SURF_DRAWSKY) ) != 0 )
 			{
 				if( sky_surfaces_chain.first_surface == NULL )
-				{
-					surf->nextalphasurface= (msurface_t*)2;//tmp
 					sky_surfaces_chain.first_surface= sky_surfaces_chain.last_surface= surf;
-					sky_surfaces_chain.surf_count= 1;
-				}
 				else
 				{
-					surf->nextalphasurface= (msurface_t*)2;//tmp
 					sky_surfaces_chain.last_surface->nextalphasurface= surf;
 					sky_surfaces_chain.last_surface= surf;
-					sky_surfaces_chain.surf_count++;
 				}
-				continue;
+				sky_surfaces_chain.surf_count++;
 			}//if sky
 			else if( (surf->texinfo->flags&(SURF_TRANS66|SURF_TRANS33)) !=0 )
 			{
@@ -746,7 +774,6 @@ void DrawTree_r( mnode_t* node, vec3_t cam_pos )
 				{
 					alpha_surfaces_chain.first_surface= 
 					alpha_surfaces_chain.last_surface= surf;
-					alpha_surfaces_chain.surf_count= 1;
 				}
 				else
 				{
@@ -754,52 +781,34 @@ void DrawTree_r( mnode_t* node, vec3_t cam_pos )
 					//but tree we walk front2back.
 					surf->nextalphasurface= alpha_surfaces_chain.first_surface;
 					alpha_surfaces_chain.first_surface= surf;
-					alpha_surfaces_chain.surf_count++;
 				}
-				continue;
+				alpha_surfaces_chain.surf_count++;
 			}//if transparent
-
-			//texture chain populating
-			int tex_ind= R_GetImageIndex(surf->texinfo->image);
-			if( texture_surfaces_chain.first_surface[tex_ind] == NULL )
-			{
-				texture_surfaces_chain.first_surface[tex_ind]=
-				texture_surfaces_chain.last_surface[tex_ind]= surf;
-			}
 			else
 			{
-				texture_surfaces_chain.last_surface[tex_ind]->nextalphasurface= surf;
-				texture_surfaces_chain.last_surface[tex_ind]= surf;
-			}
-			//surf->nextalphasurface= NULL;
-		}//for lef surfaces
-		return;
-	}
-
-	int front, back;
-	float* normal= node->plane->normal;
-	//DO NOT CHANGE THIS!!! THIS IS BSP SORTING ORDER
-	if( DotProduct(normal, cam_pos) <= node->plane->dist )
-	{
-		front= 1;
-		back= 0;
-	}
-	else
-	{
-		front= 0;
-		back= 1;
-	}
-	
-	if( node->children[front] != NULL )
-		if( node->children[front]->visframe == r_visframecount )
-			DrawTree_r( node->children[front], cam_pos );
+				//texture chain populating
+				int tex_ind= R_GetImageIndex(surf->texinfo->image);
+				if( texture_surfaces_chain.first_surface[tex_ind] == NULL )
+				{
+					texture_surfaces_chain.first_surface[tex_ind]=
+					texture_surfaces_chain.last_surface[tex_ind]= surf;
+				}
+				else
+				{
+					texture_surfaces_chain.last_surface[tex_ind]->nextalphasurface= surf;
+					texture_surfaces_chain.last_surface[tex_ind]= surf;
+				}
+			}//if default surface
+		}//draw faces
 
 
-	if( node->children[back] != NULL )
-		if( node->children[back]->visframe == r_visframecount )
-			DrawTree_r( node->children[back], cam_pos );
-	
+		if( node->children[back] != NULL )
+			if( node->children[back]->visframe == r_visframecount )
+				DrawTree_r( node->children[back], cam_pos );
+
+	}//if node, not leaf
 }
+
 
 
 void BuildSurfaceLists(m_Mat4* mat, vec3_t new_cam_pos )
@@ -819,15 +828,30 @@ void BuildSurfaceLists(m_Mat4* mat, vec3_t new_cam_pos )
 			continue;
 		mleaf_t* leaf= r_worldmodel->leafs + i;
 		msurface_t** surfaces= leaf->firstmarksurface;
+
+		if (r_newrefdef.areabits)
+		{
+			if (! (r_newrefdef.areabits[leaf->area>>3] & (1<<(leaf->area&7)) ) )
+				continue;		// not visible
+		}
+
 		for( int s= 0; s< leaf->nummarksurfaces; s++ )
 		{
 			msurface_t* surf= surfaces[s];
-			surf->nextalphasurface= NULL;
+			//surf->nextalphasurface= NULL;
 			surf->visframe= r_visframecount;
 			surf->dlightframe= 0;
 		}
 	}
+
+	surfaces_pushed= 0;
+
 	DrawTree_r( r_worldmodel->nodes, cam_pos );
+
+	char surfaces_statistic_str[64]; sprintf( surfaces_statistic_str, "surfaces pushed: %d\n", surfaces_pushed );
+	DrawCharString( 8, vid.height-16, surfaces_statistic_str );
+
+
 	m_Mat4 worlmodel_lights_transform_mat;
 	worlmodel_lights_transform_mat.Identity();
 	R_PushDlights( r_worldmodel, (float*)&worlmodel_lights_transform_mat );

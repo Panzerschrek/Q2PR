@@ -6,11 +6,18 @@
 class Texture
 {
 public:
+
+	enum ResizeMode
+	{
+		RESIZE_NO,
+		RESIZE_STRETCH,
+		RESIZE_FILL
+	};
 	Texture();
 	/*allocate memory for texture, copy data from (*data) ( if it not null ),
 	resize to upper POT size, build lods
 	*/
-	void Create( int width, int height, bool palettized, const unsigned char* pelette, const unsigned char* data, bool resize_to_pot= true, bool build_palettized_lods= false );
+	void Create( int width, int height, bool palettized, const unsigned char* pelette, const unsigned char* data, ResizeMode resize_mode= RESIZE_STRETCH, bool build_palettized_lods= false );
 	int SizeX()const;
 	int SizeY()const;
 	int OriginalSizeX()const;
@@ -43,7 +50,7 @@ private:
 	unsigned char FindNearestColorInPalette( unsigned char* color );
 
 	//init inner texture data, copy in data and resize
-	void ResizeToNearestPOTCeil( const unsigned char* in_data );
+	void ResizeToNearestPOTCeil( const unsigned char* in_data, ResizeMode resize_mode );
 
 	unsigned char* data;
 	unsigned char* lods_data[ PSR_MAX_TEXTURE_SIZE_LOG2 ];

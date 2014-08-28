@@ -7,18 +7,26 @@
 Texture sky_textures[6];
 image_t sky_images[6];
 bool is_any_sky= false;
+char current_sky_name[MAX_QPATH]= {0,0,0,0};
+float sky_rotation_speed;
+vec3_t sky_rotation_axis;
 
 extern "C" void LoadTGA (char *name, byte **pic, int *width, int *height);
 
 
 extern "C" void PANZER_SetSky(char *name, float rotate, vec3_t axis)
 {
-	static const char*const suf[6] = {"rt", "up", "bk", "lf", "dn", "ft"};
+	sky_rotation_speed= rotate;
+	VectorCopy( axis, sky_rotation_axis );
 
-	char	pathname[MAX_QPATH];
-
-	for( int i= 0; i< 6; i++ )
+	if( strcmp( current_sky_name, name ) != 0 )
 	{
+		strcpy( current_sky_name, name );
+
+		static const char*const suf[6] = {"rt", "up", "ft", "lf", "dn", "bk"};
+		char	pathname[MAX_QPATH];
+		for( int i= 0; i< 6; i++ )
+		{
 			Com_sprintf (pathname, sizeof(pathname), "env/%s%s.tga", name, suf[i]);
 			if( sky_images[i].pixels[0] != NULL )
 				free(sky_images[i].pixels[0]);
@@ -26,7 +34,9 @@ extern "C" void PANZER_SetSky(char *name, float rotate, vec3_t axis)
 
 			for( int j= 0; j< sky_images[i].width * sky_images[i].height*4; j+=4 )
 				ColorByteSwap( sky_images[i].pixels[0] + j );
+
 			sky_textures[i].Create( sky_images[i].width, sky_images[i].height, false, NULL, sky_images[i].pixels[0] );
+		}
 	}
 	is_any_sky= true;
 }
@@ -57,12 +67,12 @@ static const int cube_faces_indeces[]=
 
 static const float cube_sides_texture_basises[]=
 {
-	 0.0f,  1.0f, 0.0f,  0.0f,  0.0f, -1.0f,//x+
-	 0.0f,  1.0f, 0.0f,  1.0f,  0.0f, 0.0f,//z+
-	 1.0f,  0.0f, 0.0f,  0.0f,  0.0f, -1.0f,//y-
-	 0.0f, -1.0f, 0.0f,  0.0f,  0.0f, -1.0f,//x-
-	 0.0f,  1.0f, 0.0f,  -1.0f,  0.0f, 0.0f,//z-
-	-1.0f,  0.0f, 0.0f,  0.0f,  0.0f, -1.0f,//y+
+	 0.0f, -1.0f, 0.0f,  0.0f,  0.0f, -1.0f,//x+
+	 0.0f, -1.0f, 0.0f,  1.0f,  0.0f, 0.0f,//z+
+	-1.0f,  0.0f, 0.0f,  0.0f,  0.0f, -1.0f,//y-
+	 0.0f,  1.0f, 0.0f,  0.0f,  0.0f, -1.0f,//x-
+	 0.0f, -1.0f, 0.0f, -1.0f,  0.0f, 0.0f,//z-
+	 1.0f,  0.0f, 0.0f,  0.0f,  0.0f, -1.0f,//y+
 };
 
 
@@ -80,23 +90,25 @@ static float		 sky_tex_scaler;
 static int			 sky_tex_shift;
 triangle_draw_func_t sky_draw_func;
 
-void GetSkyDrawFunc()
+void GetSkyDrawFuncAndTexParameters()
 {
-	if( strcmp( r_texture_mode->string, "texture_linear" ) == 0 )
+	sky_tex_scaler= float( sky_textures[0].SizeX() ) * (65536.0f * 0.5f  / float(SKY_SIZE) );
+	sky_tex_scaler*= 1.0f - 2.0f / float( sky_textures[0].SizeX() );
+
+	sky_tex_shift= (1<<16) * sky_textures[0].SizeX() / 2 - (1<<16);
+
+	/*if( strcmp( r_texture_mode->string, "texture_linear" ) == 0 )
 	{
 		sky_draw_func= DrawSkyTriangleLinear;
-		sky_tex_shift= (65536/2) * sky_textures[0].SizeX() - 65536 - 32768;
+		sky_tex_shift-= (1<<15);
 	}
 	else if( strcmp( r_texture_mode->string, "texture_fake_filter" ) == 0 )
 	{
 		sky_draw_func= DrawSkyTriangleFakeFilter;
-		sky_tex_shift= (65536/2) * sky_textures[0].SizeX() - 65536 - 32768;
+		sky_tex_shift-= (1<<15);
 	}
-	else 
-	{
-		sky_draw_func= DrawSkyTriangleNearest;
-		sky_tex_shift= (65536/2) * sky_textures[0].SizeX() - 65536;
-	}
+	else*/ 
+	sky_draw_func= DrawSkyTriangleNearest;
 }
 
 void DrawSkyBoxFaces( const m_Mat4* rot_mat, float dst_to_skybox )
@@ -190,11 +202,11 @@ void DrawSkyBoxFaces( const m_Mat4* rot_mat, float dst_to_skybox )
 }
 
 void DrawSkyBox( const m_Mat4* rot_mat, vec3_t cam_pos )
-{
-	sky_tex_scaler= float( sky_textures[0].SizeX() ) * (65536.0f * 0.5f  / float(SKY_SIZE) );
-	sky_tex_scaler*= 1.0f - 2.0f / float( sky_textures[0].SizeX() );
-	
-	GetSkyDrawFunc();
+{	
+	if( !is_any_sky )
+		return;
+
+	GetSkyDrawFuncAndTexParameters();
 
 	msurface_t* surf= sky_surfaces_chain.first_surface;
 

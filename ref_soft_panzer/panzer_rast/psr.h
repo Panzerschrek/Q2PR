@@ -44,6 +44,9 @@ typedef int fixed16_t;
 
 #define PSR_MIN_ZMIN_FLOAT 0.128f
 #define PSR_MIN_ZMIN (65536/8)// minimal value of zmin in fixed16_t format
+#define PSR_INV_MIN_ZMIN_INT 8
+#define PSR_INV_MIN_ZMIN_LOG2 3
+
 #define PSR_MAX_ZMAX (1024)// maximal value of zmax in INT format
 
 //if defined, z calculates every PSR_LINE_SEGMENT_SIZE pixel in scanline

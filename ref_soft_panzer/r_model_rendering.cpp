@@ -495,7 +495,7 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 		tex= R_FindTexture( (image_t*)NULL );//HACK
 	}
 	buff+= ComIn_SetTexture( buff, tex );
-	int tex_scaler[]= { 65536 * tex->SizeX() / tex->OriginalSizeX(), -65536 * tex->SizeY() / tex->OriginalSizeY() };
+	int tex_y_shift= (tex->OriginalSizeY() - tex->SizeY())<<16;
 
 	*((int*)buff)= COMMAND_DRAW_TRIANGLE;
 	buff+= sizeof(int);
@@ -545,12 +545,12 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 		triangle_in_vertex_z[0]= fixed16_t(coord[0].z*65536.0f);
 		triangle_in_vertex_z[1]= fixed16_t(coord[1].z*65536.0f);
 		triangle_in_vertex_z[2]= fixed16_t(coord[2].z*65536.0f);
-		triangle_in_tex_coord[0]= st[tris->index_st[0]].s*tex_scaler[0];
-		triangle_in_tex_coord[1]= st[tris->index_st[0]].t*tex_scaler[1];
-		triangle_in_tex_coord[2]= st[tris->index_st[1]].s*tex_scaler[0];
-		triangle_in_tex_coord[3]= st[tris->index_st[1]].t*tex_scaler[1];
-		triangle_in_tex_coord[4]= st[tris->index_st[2]].s*tex_scaler[0];
-		triangle_in_tex_coord[5]= st[tris->index_st[2]].t*tex_scaler[1];
+		triangle_in_tex_coord[0]= st[tris->index_st[0]].s<<16;
+		triangle_in_tex_coord[1]= -(st[tris->index_st[0]].t<<16) + tex_y_shift;
+		triangle_in_tex_coord[2]= st[tris->index_st[1]].s<<16;
+		triangle_in_tex_coord[3]= -(st[tris->index_st[1]].t<<16) + tex_y_shift;
+		triangle_in_tex_coord[4]= st[tris->index_st[2]].s<<16;
+		triangle_in_tex_coord[5]= -(st[tris->index_st[2]].t<<16) + tex_y_shift;
 		//triangle_in_light[0]= current_model_vertex_lights[ tris->index_xyz[0] ].light;
 		//triangle_in_light[1]= current_model_vertex_lights[ tris->index_xyz[1] ].light;
 		//triangle_in_light[2]= current_model_vertex_lights[ tris->index_xyz[2] ].light;
