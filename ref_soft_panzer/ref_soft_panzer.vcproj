@@ -830,6 +830,14 @@
 						/>
 					</FileConfiguration>
 					<FileConfiguration
+						Name="Release Alpha|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							AssemblerOutput="4"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
 						Name="Debug_Heretic_II|Win32"
 						>
 						<Tool

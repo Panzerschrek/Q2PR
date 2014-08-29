@@ -27,6 +27,7 @@ typedef struct surfaces_chain_s
 
 void BuildSurfaceLists(m_Mat4* mat, vec3_t cam_pos );
 void DrawWorldTextureChains();
+void DrawWorldSurfaces();
 void DrawWorldAlphaSurfaces();
 
 triangle_draw_func_t GetWorldDrawFunc( int texture_mode, bool is_blending );

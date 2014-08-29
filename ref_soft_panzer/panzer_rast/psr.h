@@ -42,10 +42,10 @@ typedef int fixed16_t;
 
 #define PSR_MAX_NORMALIZED_LIGHT 127// color= ( normalized_light * 256 * color )/256
 
-#define PSR_MIN_ZMIN_FLOAT 0.128f
-#define PSR_MIN_ZMIN (65536/8)// minimal value of zmin in fixed16_t format
-#define PSR_INV_MIN_ZMIN_INT 8
-#define PSR_INV_MIN_ZMIN_LOG2 3
+#define PSR_MIN_ZMIN_FLOAT 0.0625f
+#define PSR_MIN_ZMIN (65536/16)// minimal value of zmin in fixed16_t format
+#define PSR_INV_MIN_ZMIN_INT 16
+#define PSR_INV_MIN_ZMIN_INT_LOG2 4
 
 #define PSR_MAX_ZMAX (1024)// maximal value of zmax in INT format
 

@@ -25,6 +25,7 @@ texture_surfaces_chain_t texture_surfaces_chain;
 
 surfaces_chain_t alpha_surfaces_chain;
 surfaces_chain_t sky_surfaces_chain;
+surfaces_chain_t world_surfaces_chain;
 
 float width2_f;
 float height2_f;
@@ -224,8 +225,9 @@ void InitTextureSurfacesChain()
 	memset( &texture_surfaces_chain, 0, sizeof(texture_surfaces_chain_t) );
 	memset( &alpha_surfaces_chain, 0, sizeof(surfaces_chain_t) );
 	memset( &sky_surfaces_chain, 0, sizeof(surfaces_chain_t) );
-	sky_surfaces_chain.first_surface= sky_surfaces_chain.last_surface= NULL;
-	sky_surfaces_chain.surf_count= 0;
+	memset( &world_surfaces_chain, 0, sizeof(surfaces_chain_t) );
+	//sky_surfaces_chain.first_surface= sky_surfaces_chain.last_surface= NULL;
+	//sky_surfaces_chain.surf_count= 0;
 }
 
 
@@ -626,7 +628,7 @@ next_surface:
 
 }
 
-void DrawWorldTextureChains()
+/*void DrawWorldTextureChains()
 {
 	int tex_coord_shift;
 	int tex_mode;
@@ -652,14 +654,6 @@ void DrawWorldTextureChains()
 			continue;
 		while(1)
 		{
-			/*{
-				mplane_t* plane= surf->plane;
-				float dot= DotProduct(plane->normal, cam_pos) - plane->dist;
-				if( (surf->flags&SURF_PLANEBACK) == SURF_PLANEBACK )
-					dot= -dot;
-				if( dot <= 0.0f )
-					goto next_surface;
-			}*/
 			face_count++;
 
 			bool no_lightmaps= (surf->flags&SURF_DRAWTURB)!= 0 || (surf->texinfo->flags&SURF_WARP)!= 0 || surf->samples == NULL;
@@ -701,9 +695,65 @@ next_surface:
 		};//for chain
 	}//for textures
 
-/*	char triangles_str[64];
-	sprintf( triangles_str, "triangles: %d\n faces: %d", triangle_count, face_count );
-	DrawCharString( 8, 64, triangles_str );*/
+}*/
+
+void DrawWorldSurfaces()
+{
+	int tex_coord_shift;
+	int tex_mode;
+	if( strcmp( r_texture_mode->string, "texture_linear" ) == 0 )
+		tex_coord_shift= -32768;
+	else if( strcmp( r_texture_mode->string, "texture_fake_filter" ) == 0 )
+		tex_coord_shift= -32768;
+
+	else
+		tex_coord_shift= 0;
+
+	triangle_draw_func_t  near_draw_func= GetWorldNearDrawFunc(false);
+	triangle_draw_func_t  far_draw_func= GetWorldFarDrawFunc(false);
+	triangle_draw_func_t  near_draw_func_no_lightmap= GetWorldNearDrawFuncNoLightmaps(false);
+	triangle_draw_func_t  far_draw_func_no_lightmap= GetWorldFarDrawFuncNoLightmaps(false);
+
+	int triangle_count= 0, face_count= 0;
+
+	msurface_t* surf= world_surfaces_chain.first_surface;
+	while( face_count < world_surfaces_chain.surf_count )
+	{
+		bool no_lightmaps= (surf->flags&SURF_DRAWTURB)!= 0 || (surf->texinfo->flags&SURF_WARP)!= 0 || surf->samples == NULL;
+		if(!no_lightmaps)
+		{
+			command_buffer.current_pos += 
+			ComIn_SetLightmap( command_buffer.current_pos + (char*)command_buffer.buffer,
+				L_GetSurfaceDynamicLightmap(surf), (surf->extents[0]>>4) + 1 );
+		}
+
+		mtexinfo_t* texinfo= surf->texinfo;
+		int tex_frame= current_frame % texinfo->numframes;
+		int fr= tex_frame;
+		while(fr)
+		{
+			texinfo= texinfo->next;
+			fr--;
+		}
+
+		int cur_triangles;
+		int vert_size;
+		if(no_lightmaps)
+		{
+			cur_triangles= DrawWorldSurface(surf, near_draw_func_no_lightmap, far_draw_func_no_lightmap, texinfo, tex_coord_shift );
+			vert_size= sizeof(int)*3 + sizeof(int)*2;//cord + tex_coord
+		}
+		else
+		{
+			cur_triangles= DrawWorldSurface(surf, near_draw_func, far_draw_func, texinfo, tex_coord_shift );
+			vert_size= sizeof(int)*3 + sizeof(int)*2 + sizeof(int)*2;//cord + tex_coord + lightmap_cooed
+		}
+		triangle_count+= cur_triangles;
+		command_buffer.current_pos+= sizeof(int) + sizeof(DrawTriangleCall) + cur_triangles * 4 * vert_size;
+
+		surf= surf->nextalphasurface;
+		face_count++;
+	}
 }
 
 static int surfaces_pushed= 0;
@@ -791,7 +841,7 @@ void DrawTree_r( mnode_t* node, vec3_t cam_pos )
 			else
 			{
 				//texture chain populating
-				int tex_ind= R_GetImageIndex(surf->texinfo->image);
+				/*int tex_ind= R_GetImageIndex(surf->texinfo->image);
 				if( texture_surfaces_chain.first_surface[tex_ind] == NULL )
 				{
 					texture_surfaces_chain.first_surface[tex_ind]=
@@ -801,7 +851,17 @@ void DrawTree_r( mnode_t* node, vec3_t cam_pos )
 				{
 					texture_surfaces_chain.last_surface[tex_ind]->nextalphasurface= surf;
 					texture_surfaces_chain.last_surface[tex_ind]= surf;
+				}*/
+				if( world_surfaces_chain.first_surface == NULL )
+				{
+					world_surfaces_chain.last_surface= world_surfaces_chain.first_surface= surf;
 				}
+				else
+				{
+					world_surfaces_chain.last_surface->nextalphasurface= surf;
+					world_surfaces_chain.last_surface= surf;
+				}
+				world_surfaces_chain.surf_count++;
 			}//if default surface
 		}//draw faces
 

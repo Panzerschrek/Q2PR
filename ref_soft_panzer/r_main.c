@@ -318,7 +318,7 @@ void PANZER_Register (void)
 	r_dlights_saturation= ri.Cvar_Get( "r_dlights_saturation", "1.0", CVAR_ARCHIVE ); r_dlights_saturation->modified= false;
 	r_texture_mode= ri.Cvar_Get( "r_texture_mode", "texture_nearest", CVAR_ARCHIVE ); r_texture_mode->modified= false;
 	r_use_multithreading= ri.Cvar_Get( "r_use_multithreading", "0", CVAR_ARCHIVE ); r_use_multithreading->modified= false;
-	r_palettized_textures= ri.Cvar_Get( "r_palettized_textures", "0", CVAR_ARCHIVE ); r_palettized_textures->modified= false;
+	r_palettized_textures= ri.Cvar_Get( "r_palettized_textures", "1", CVAR_ARCHIVE ); r_palettized_textures->modified= false;
 	r_interpolate_videos= ri.Cvar_Get( "r_interpolate_videos", "1", CVAR_ARCHIVE );
 	r_clear_color_buffer= ri.Cvar_Get( "r_clear_color_buffer", "0", CVAR_ARCHIVE );
 

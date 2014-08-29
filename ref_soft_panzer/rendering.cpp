@@ -700,7 +700,7 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 	SetWorldFrame( int(r_newrefdef.time*2.0f) );
 
 	command_buffer.current_pos+= ComIn_ClearDepthBuffer( 
-		(char*)command_buffer.buffer + command_buffer.current_pos, 0xFFFF );
+		(char*)command_buffer.buffer + command_buffer.current_pos, 0x0000 );
 
 	if( (fd->rdflags&RDF_NOWORLDMODEL) == 0 )
 	{
@@ -756,7 +756,8 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 		BuildSurfaceLists(&result, fd->vieworg);
 
 		SetSurfaceMatrix(&result);
-		DrawWorldTextureChains();
+		//DrawWorldTextureChains();
+		DrawWorldSurfaces();
 
 		SetSurfaceMatrix(&result);
 		DrawEntities(&result, &normal_mat, fd->vieworg, false );
