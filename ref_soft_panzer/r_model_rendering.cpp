@@ -28,7 +28,7 @@ void CalculateEntityMatrix( entity_t* ent, m_Mat4* mat_out )
 	*mat_out= rot_y * rot_x * rot_z * translate;
 }
 
-void CalcualteEntityReverseMatrix( entity_t* ent, m_Mat4* mat_out, m_Mat4* normals_mat_out= NULL )
+void CalcualteEntityInverseMatrix( entity_t* ent, m_Mat4* mat_out, m_Mat4* normals_mat_out= NULL )
 {
 	float to_rad= 3.1415926535f / 180.0f;
 	m_Mat4 rot_x, rot_y, rot_z, translate;
@@ -113,7 +113,7 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t ca
 
 	vec3_t cam_pos_model_space;
 	m_Mat4 inverse_entity_matrix, inverse_normal_matrix;
-	CalcualteEntityReverseMatrix( ent, &inverse_entity_matrix, &inverse_normal_matrix );
+	CalcualteEntityInverseMatrix( ent, &inverse_entity_matrix, &inverse_normal_matrix );
 	//convert camera position to model space, to use backplane discarding
 	*((m_Vec3*)cam_pos_model_space)= *((m_Vec3*)cam_pos) * inverse_entity_matrix;
 
@@ -187,6 +187,122 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t ca
 }
 
 
+#define MAX_MODEL_POLYGON_VERTICES 16
+struct ModelVertex
+{
+	float position[3];
+	float st[2];
+	float light[3];
+};
+
+ModelVertex* current_model_polygon[MAX_MODEL_POLYGON_VERTICES];
+ModelVertex	 current_model_polygon_vertices[MAX_MODEL_POLYGON_VERTICES];
+int model_tmp_vertices_stack_pos= 0;
+bool model_vertex_position[ MAX_MODEL_POLYGON_VERTICES ];
+extern mplane_t clip_planes[];
+
+
+int ClipModelPolygonByPlane( int vertex_count, mplane_t* plane )
+{
+	float* normal= plane->normal;
+
+	int discarded_vertex_count= 0;
+	for( int i= 0; i< vertex_count; i++ )
+	{
+		if( DotProduct(normal, current_model_polygon[i]->position ) > plane->dist )
+		{
+			model_vertex_position[i]= true;
+		}
+		else
+		{
+			discarded_vertex_count++;
+			model_vertex_position[i]= false;// false means discarded
+		}
+	}
+
+	if( discarded_vertex_count == vertex_count )
+		return 0;
+	else if( discarded_vertex_count == 0 )
+		return vertex_count;
+
+	int splitted_edge[2];
+	//0 - index of discarded vertex
+	//1 - index of passed vertex
+	for( int i= 0; i< vertex_count; i++ )
+	{
+		int next_vertex_index= i+1; if( next_vertex_index == vertex_count ) next_vertex_index= 0;
+		if( !model_vertex_position[i] )//if back vertex
+		{
+			if( model_vertex_position[next_vertex_index] )//if front vertex
+				splitted_edge[0]= i;
+		}
+		else//if fron vertex
+		{
+			if(!model_vertex_position[next_vertex_index])//if back vertex
+				splitted_edge[1]= i;
+		}
+	}
+
+	ModelVertex* new_v[2]={  current_model_polygon_vertices + model_tmp_vertices_stack_pos, current_model_polygon_vertices + model_tmp_vertices_stack_pos + 1 };
+	model_tmp_vertices_stack_pos+= 2;
+
+	for( int i= 0; i< 2; i++ )
+	{
+		int v0_ind= splitted_edge[i];
+		int v1_ind= splitted_edge[i]+1; if( v1_ind == vertex_count ) v1_ind= 0;
+		float* v0= current_model_polygon[v0_ind]->position, *v1= current_model_polygon[v1_ind]->position;
+		
+		float k0= fabs( DotProduct(v0,normal) - plane->dist );
+		float k1= fabs( DotProduct(v1,normal) - plane->dist );
+		float inv_dst_sum= 1.0f / ( k0 + k1 );
+		k0*= inv_dst_sum;
+		k1*= inv_dst_sum;
+
+		float* out_pos= new_v[i]->position;
+		out_pos[0]= k1 * v0[0] + k0 * v1[0];
+		out_pos[1]= k1 * v0[1] + k0 * v1[1];
+		out_pos[2]= k1 * v0[2] + k0 * v1[2];
+		new_v[i]->st[0]= k1 * current_model_polygon[v0_ind]->st[0] + k0 * current_model_polygon[v1_ind]->st[0];
+		new_v[i]->st[1]= k1 * current_model_polygon[v0_ind]->st[1] + k0 * current_model_polygon[v1_ind]->st[1];
+		new_v[i]->light[0]= k1 * current_model_polygon[v0_ind]->light[0] + k0 * current_model_polygon[v1_ind]->light[0];
+		new_v[i]->light[1]= k1 * current_model_polygon[v0_ind]->light[1] + k0 * current_model_polygon[v1_ind]->light[1];
+		new_v[i]->light[2]= k1 * current_model_polygon[v0_ind]->light[2] + k0 * current_model_polygon[v1_ind]->light[2];
+	}
+
+	if( discarded_vertex_count == 2 )
+	{
+		current_model_polygon[ splitted_edge[0] ]= new_v[0];
+		int new_v_ind= splitted_edge[1]+1; if( new_v_ind == vertex_count ) new_v_ind= 0;
+		current_model_polygon[new_v_ind]= new_v[1];
+		return vertex_count;
+	}
+	else if( discarded_vertex_count > 2 )
+	{
+		ModelVertex* tmp_vertices[MAX_MODEL_POLYGON_VERTICES];
+		for( int i= 0; i< vertex_count; i++ )
+			tmp_vertices[i]= current_model_polygon[i];
+
+		current_model_polygon[0]= new_v[1];
+		current_model_polygon[1]= new_v[0];
+		int new_vertex_count= vertex_count - discarded_vertex_count + 2;
+		for( int i= 2, j= splitted_edge[0]+1; i < vertex_count; i++, j++ )
+		{	
+			current_model_polygon[i]= tmp_vertices[j%vertex_count];
+		}
+		return new_vertex_count;
+	}	
+	else//discard one vertex
+	{
+		int discarded_v_ind= splitted_edge[0];
+		for( int i= vertex_count; i> discarded_v_ind; i-- )
+			current_model_polygon[i]= current_model_polygon[i-1];
+		
+		current_model_polygon[discarded_v_ind  ]= new_v[1];
+		current_model_polygon[discarded_v_ind+1]= new_v[0];
+		return vertex_count + 1;
+	}
+}
+
 #define NUMVERTEXNORMALS	162
 float	r_avertexnormals[NUMVERTEXNORMALS][3] = {
 #include "anorms.h"
@@ -201,6 +317,35 @@ union
 }current_model_vertex_lights[ MODEL_MAX_VERTICES ];
 
 
+int ClipModelTriangle( dtriangle_t* triangle, dstvert_t* st )//returns number of output vertices
+{
+	model_tmp_vertices_stack_pos= 3;
+	for( int i= 0; i< 3; i++ )//generate initial polygon from triangle
+	{
+		m_Vec3* v= &current_model_vertices[ triangle->index_xyz[i] ];
+		current_model_polygon_vertices[i].position[0]= v->x;
+		current_model_polygon_vertices[i].position[1]= v->y;
+		current_model_polygon_vertices[i].position[2]= v->z;
+		current_model_polygon_vertices[i].st[0]= st[ triangle->index_st[i] ].s;
+		current_model_polygon_vertices[i].st[1]= st[ triangle->index_st[i] ].t;
+
+		current_model_polygon_vertices[i].light[0]= float(current_model_vertex_lights[ triangle->index_xyz[i] ].colored_light[0] );
+		current_model_polygon_vertices[i].light[1]= float(current_model_vertex_lights[ triangle->index_xyz[i] ].colored_light[1] );
+		current_model_polygon_vertices[i].light[2]= float(current_model_vertex_lights[ triangle->index_xyz[i] ].colored_light[2] );
+
+		current_model_polygon[i]= current_model_polygon_vertices + i;
+	}
+	int vertex_count= 3;
+
+	for( int i= 0; i< 5; i++ )
+	{
+		vertex_count= ClipModelPolygonByPlane( vertex_count, clip_planes + i );
+		if( vertex_count == 0 )
+			return 0;
+	}
+	return vertex_count;
+}
+
 void CalculateModelVertices(  entity_t* ent )
 {
 	dmdl_t* model= (dmdl_t* )ent->model->extradata;
@@ -208,8 +353,7 @@ void CalculateModelVertices(  entity_t* ent )
 	int current_model_frame= ent->frame % model->num_frames;
 	daliasframe_t* frame= (daliasframe_t*)( (char*)model + model->ofs_frames + current_model_frame * model->framesize );
 
-	//if( (ent->flags&(RF_FRAMELERP|RF_WEAPONMODEL)) != 0 )
-	if(1)
+	if( model->num_frames > 1 && ent->backlerp > 0.05f )
 	{
 		int prev_model_frame= ent->oldframe %model->num_frames;
 		daliasframe_t* old_frame= (daliasframe_t*)( (char*)model + model->ofs_frames + prev_model_frame * model->framesize );
@@ -236,7 +380,44 @@ void CalculateModelVertices(  entity_t* ent )
 	}
 }
 
-void CalculateModelLights( entity_t* ent )
+enum AliasModelVisibilityType
+{
+	ALIAS_MODEL_NOT_VISIBLE,
+	ALIAS_MODEL_HIT_FRUSTRUM_EDGE,
+	ALIAS_MODEL_IN_FRUSTRUM
+};
+
+AliasModelVisibilityType IsModelVisible( entity_t* ent )
+{
+	dmdl_t* model= (dmdl_t* )ent->model->extradata;
+	int current_model_frame= ent->frame % model->num_frames;
+
+	daliasframe_t* frame= (daliasframe_t*)( (char*)model + model->ofs_frames + current_model_frame * model->framesize );
+
+	float center[3];//model space model center
+	float radius= (0.5f * 255.0f ) * sqrtf( DotProduct( frame->scale, frame->scale ) );
+	float neg_radius= -radius;
+
+	for( int i= 0; i< 3; i++ )
+		center[i]= (255.0f * 0.5f) * frame->scale[i] + frame->translate[i];
+
+	bool is_on_frustrum_edge= false;
+	for( int i= 0; i< 5; i++ )
+	{
+		mplane_t* plane= clip_planes + i;
+		float dst_to_clip_plane= DotProduct( center, plane->normal ) - plane->dist;
+		if( dst_to_clip_plane < neg_radius )
+			return ALIAS_MODEL_NOT_VISIBLE;
+		else if( dst_to_clip_plane < radius )
+			is_on_frustrum_edge= true;
+	}
+	if( is_on_frustrum_edge )
+		return ALIAS_MODEL_HIT_FRUSTRUM_EDGE;
+	else 
+		return ALIAS_MODEL_IN_FRUSTRUM;
+}
+
+void CalculateModelLights( entity_t* ent, m_Mat4* light_transform_matrix, m_Mat4* light_transform_normal_matrix )
 {
 	dmdl_t* model= (dmdl_t* )ent->model->extradata;
 	int current_model_frame= ent->frame % model->num_frames;
@@ -249,14 +430,14 @@ void CalculateModelLights( entity_t* ent )
 	if( model_dlight_num > MAX_DLIGHTS )
 		model_dlight_num= MAX_DLIGHTS;
 
-	m_Mat4 light_transform_matrix;//transformation matrix world_space => model_space
-	m_Mat4 light_transform_normal_matrix;
+	//m_Mat4 light_transform_matrix;//transformation matrix world_space => model_space
+	//m_Mat4 light_transform_normal_matrix;
 
-	CalcualteEntityReverseMatrix( ent, &light_transform_matrix, &light_transform_normal_matrix );
+	//CalcualteEntityInverseMatrix( ent, &light_transform_matrix, &light_transform_normal_matrix );
 	for( int i= 0; i< model_dlight_num; i++ )
 	{
 		m_Vec3 light_pos( r_newrefdef.dlights[i].origin[0], r_newrefdef.dlights[i].origin[1], r_newrefdef.dlights[i].origin[2] );
-		*((m_Vec3*)model_lights[i].origin)= light_pos * light_transform_matrix;
+		*((m_Vec3*)model_lights[i].origin)= light_pos * *light_transform_matrix;
 		model_lights[i].intensity= r_newrefdef.dlights[i].intensity;
 		model_lights[i].color[0]=  r_newrefdef.dlights[i].color[0];
 		model_lights[i].color[1]=  r_newrefdef.dlights[i].color[1];
@@ -440,7 +621,7 @@ triangle_draw_func_t GetModelDrawFuncDepthHack()
 		return DrawModelTriangleTextureNearestLightingColoredDepthHack;
 }
 
-void DrawAliasEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
+void DrawAliasEntity( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam_pos )
 {
 	if( (ent->flags&RF_WEAPONMODEL) != 0 )
 	{
@@ -455,16 +636,24 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 
 	dmdl_t* model= (dmdl_t* )ent->model->extradata;
 
-	dtriangle_t* tris= (dtriangle_t*)( (char*)model + model->ofs_tris );
-	dstvert_t* st= (dstvert_t*)( (char*)model + model->ofs_st );
+
+	m_Mat4 entity_mat, result_mat, hand_mat, inverse_mat, normal_inverse_mat, clip_lanes_normal_mat;
+	float cam_pos_model_space[3];
+	CalculateEntityMatrix( ent, &entity_mat );
+	CalcualteEntityInverseMatrix( ent, &inverse_mat, &normal_inverse_mat );
+
+	*((m_Vec3*)cam_pos_model_space)= *((m_Vec3*)cam_pos) * inverse_mat;
+	clip_lanes_normal_mat= *normal_mat * normal_inverse_mat;
+	InitFrustrumClipPlanes( &clip_lanes_normal_mat, cam_pos_model_space );
+	AliasModelVisibilityType model_visibility_type= IsModelVisible( ent );
+	if( model_visibility_type == ALIAS_MODEL_NOT_VISIBLE )
+		return;
 	
 	bool is_fullbright= (ent->flags&RF_FULLBRIGHT) != 0;
 	CalculateModelVertices( ent );
 	if( !is_fullbright )
-		CalculateModelLights( ent );
+		CalculateModelLights( ent, &inverse_mat, &normal_inverse_mat );
 
-	m_Mat4 entity_mat, result_mat, hand_mat;
-	CalculateEntityMatrix( ent, &entity_mat );
 	result_mat= entity_mat * *mat;
 	if( (ent->flags&RF_WEAPONMODEL) != 0 )
 	{
@@ -475,6 +664,9 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 			result_mat= result_mat * hand_mat;
 		}
 	}
+
+	dtriangle_t* tris= (dtriangle_t*)( (char*)model + model->ofs_tris );
+	dstvert_t* st= (dstvert_t*)( (char*)model + model->ofs_st );
 
 	char* buff= (char*) command_buffer.buffer;
 	buff+= command_buffer.current_pos;
@@ -506,69 +698,131 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 	call->DrawFromBufferFunc= ((ent->flags&RF_DEPTHHACK)==0) ? GetModelDrawFunc( ent ) : GetModelDrawFuncDepthHack();
 	buff+= sizeof(DrawTriangleCall);
 
-	float inv_iterp_k= ent->backlerp;
-	float interp_k= 1.0f - inv_iterp_k;
-	for( int t= 0; t< model->num_tris; t++, tris++ )
+	if( model_visibility_type == ALIAS_MODEL_IN_FRUSTRUM )
 	{
-		m_Vec3 coord[3];//screen space coord
-		for( int i= 0; i< 3; i++ )
-			coord[i]= current_model_vertices[ tris->index_xyz[i] ] * result_mat;
-		
-		if( coord[0].z < PSR_MIN_ZMIN_FLOAT || coord[1].z < PSR_MIN_ZMIN_FLOAT || coord[2].z < PSR_MIN_ZMIN_FLOAT )
-			continue;
-
-		for( int i= 0; i< 3; i++ )
+		for( int t= 0; t< model->num_tris; t++, tris++ )
 		{
-			float inv_z= 1.0f/ coord[i].z;
-			coord[i].x= ( coord[i].x * inv_z + 1.0f ) * width2_f;
-			coord[i].y= ( coord[i].y * inv_z + 1.0f ) * height2_f;
-		}
-		if( coord[0].x < 0.0f || coord[0].x > width_f || coord[0].y < 0.0f || coord[0].y > height_f )
-			continue;
-		if( coord[1].x < 0.0f || coord[1].x > width_f || coord[1].y < 0.0f || coord[1].y > height_f )
-			continue;
-		if( coord[2].x < 0.0f || coord[2].x > width_f || coord[2].y < 0.0f || coord[2].y > height_f )
-			continue;
+			m_Vec3 coord[3];//screen space coord
+			for( int i= 0; i< 3; i++ )
+				coord[i]= current_model_vertices[ tris->index_xyz[i] ] * result_mat;
+			
+			if( coord[0].z < PSR_MIN_ZMIN_FLOAT || coord[1].z < PSR_MIN_ZMIN_FLOAT || coord[2].z < PSR_MIN_ZMIN_FLOAT )
+				continue;
 
-		//bak face culling
-		float v[4]= { coord[2].x - coord[1].x, coord[2].y - coord[1].y, coord[1].x - coord[0].x, coord[1].y - coord[0].y };
-		if( v[0] * v[3]  - v[2] * v[1] < 1.0f )
-			continue;
-		
-		using namespace VertexProcessing;
-		triangle_in_vertex_xy[0]= fixed16_t(coord[0].x);
-		triangle_in_vertex_xy[1]= fixed16_t(coord[0].y);
-		triangle_in_vertex_xy[2]= fixed16_t(coord[1].x);
-		triangle_in_vertex_xy[3]= fixed16_t(coord[1].y);
-		triangle_in_vertex_xy[4]= fixed16_t(coord[2].x);
-		triangle_in_vertex_xy[5]= fixed16_t(coord[2].y);
-		triangle_in_vertex_z[0]= fixed16_t(coord[0].z*65536.0f);
-		triangle_in_vertex_z[1]= fixed16_t(coord[1].z*65536.0f);
-		triangle_in_vertex_z[2]= fixed16_t(coord[2].z*65536.0f);
-		triangle_in_tex_coord[0]= st[tris->index_st[0]].s<<16;
-		triangle_in_tex_coord[1]= -(st[tris->index_st[0]].t<<16) + tex_y_shift;
-		triangle_in_tex_coord[2]= st[tris->index_st[1]].s<<16;
-		triangle_in_tex_coord[3]= -(st[tris->index_st[1]].t<<16) + tex_y_shift;
-		triangle_in_tex_coord[4]= st[tris->index_st[2]].s<<16;
-		triangle_in_tex_coord[5]= -(st[tris->index_st[2]].t<<16) + tex_y_shift;
-		//triangle_in_light[0]= current_model_vertex_lights[ tris->index_xyz[0] ].light;
-		//triangle_in_light[1]= current_model_vertex_lights[ tris->index_xyz[1] ].light;
-		//triangle_in_light[2]= current_model_vertex_lights[ tris->index_xyz[2] ].light;
-		*((int*)triangle_in_color)= current_model_vertex_lights[ tris->index_xyz[0] ].light;
-		*((int*)triangle_in_color+1)= current_model_vertex_lights[ tris->index_xyz[1] ].light;
-		*((int*)triangle_in_color+2)= current_model_vertex_lights[ tris->index_xyz[2] ].light;
+			for( int i= 0; i< 3; i++ )
+			{
+				float inv_z= 1.0f/ coord[i].z;
+				coord[i].x= ( coord[i].x * inv_z + 1.0f ) * width2_f;
+				coord[i].y= ( coord[i].y * inv_z + 1.0f ) * height2_f;
+			}
 
-		int draw_result;
-		if(is_fullbright)
-			draw_result= DrawFullbrightTexturedModelTriangleToBuffer(buff);
-		else
-			draw_result= DrawTexturedModelTriangleToBuffer( buff );
-		if( draw_result != 0 )
+			//bak face culling
+			float v[4]= { coord[2].x - coord[1].x, coord[2].y - coord[1].y, coord[1].x - coord[0].x, coord[1].y - coord[0].y };
+			if( v[0] * v[3]  - v[2] * v[1] < 1.0f )
+				continue;
+			
+			using namespace VertexProcessing;
+			triangle_in_vertex_xy[0]= fixed16_t(coord[0].x);
+			triangle_in_vertex_xy[1]= fixed16_t(coord[0].y);
+			triangle_in_vertex_xy[2]= fixed16_t(coord[1].x);
+			triangle_in_vertex_xy[3]= fixed16_t(coord[1].y);
+			triangle_in_vertex_xy[4]= fixed16_t(coord[2].x);
+			triangle_in_vertex_xy[5]= fixed16_t(coord[2].y);
+			triangle_in_vertex_z[0]= fixed16_t(coord[0].z*65536.0f);
+			triangle_in_vertex_z[1]= fixed16_t(coord[1].z*65536.0f);
+			triangle_in_vertex_z[2]= fixed16_t(coord[2].z*65536.0f);
+			triangle_in_tex_coord[0]= st[tris->index_st[0]].s<<16;
+			triangle_in_tex_coord[1]= tex_y_shift -(st[tris->index_st[0]].t<<16);
+			triangle_in_tex_coord[2]= st[tris->index_st[1]].s<<16;
+			triangle_in_tex_coord[3]= tex_y_shift -(st[tris->index_st[1]].t<<16);
+			triangle_in_tex_coord[4]= st[tris->index_st[2]].s<<16;
+			triangle_in_tex_coord[5]= tex_y_shift -(st[tris->index_st[2]].t<<16);
+			*((int*)triangle_in_color)= current_model_vertex_lights[ tris->index_xyz[0] ].light;
+			*((int*)triangle_in_color+1)= current_model_vertex_lights[ tris->index_xyz[1] ].light;
+			*((int*)triangle_in_color+2)= current_model_vertex_lights[ tris->index_xyz[2] ].light;
+
+			int draw_result;
+			if(is_fullbright)
+				draw_result= DrawFullbrightTexturedModelTriangleToBuffer(buff);
+			else
+				draw_result= DrawTexturedModelTriangleToBuffer( buff );
+			if( draw_result != 0 )
+			{
+				buff+= 4 * call->vertex_size;
+				call->triangle_count++;
+			}
+		}//for triangles
+	}//if model fully in frustrum
+	else
+	{
+		for( int p= 0; p< model->num_tris; p++, tris++ )
 		{
-			buff+= 4 * call->vertex_size;
-			call->triangle_count++;
-		}
-	}//for triangles
+			int vertex_count= ClipModelTriangle( tris, st );
+			if( vertex_count == 0 )
+				continue;
+			for( int t= 0; t< vertex_count-2; t++ )
+			{
+				m_Vec3 coord[3];//screen space coord
+				coord[0]= *((m_Vec3*)current_model_polygon[0  ]->position) * result_mat;
+				coord[1]= *((m_Vec3*)current_model_polygon[t+1]->position) * result_mat;
+				coord[2]= *((m_Vec3*)current_model_polygon[t+2]->position) * result_mat;
+				if( coord[0].z < PSR_MIN_ZMIN_FLOAT || coord[1].z < PSR_MIN_ZMIN_FLOAT || coord[2].z < PSR_MIN_ZMIN_FLOAT )
+					continue;
+
+				for( int i= 0; i< 3; i++ )
+				{
+					float inv_z= 1.0f/ coord[i].z;
+					coord[i].x= ( coord[i].x * inv_z + 1.0f ) * width2_f;
+					coord[i].y= ( coord[i].y * inv_z + 1.0f ) * height2_f;
+				}
+				//bak face culling
+				float v[4]= { coord[2].x - coord[1].x, coord[2].y - coord[1].y, coord[1].x - coord[0].x, coord[1].y - coord[0].y };
+				if( v[0] * v[3]  - v[2] * v[1] < 1.0f )
+					continue;
+
+				using namespace VertexProcessing;
+				triangle_in_vertex_xy[0]= fixed16_t(coord[0].x);
+				triangle_in_vertex_xy[1]= fixed16_t(coord[0].y);
+				triangle_in_vertex_xy[2]= fixed16_t(coord[1].x);
+				triangle_in_vertex_xy[3]= fixed16_t(coord[1].y);
+				triangle_in_vertex_xy[4]= fixed16_t(coord[2].x);
+				triangle_in_vertex_xy[5]= fixed16_t(coord[2].y);
+				triangle_in_vertex_z[0]= fixed16_t(coord[0].z*65536.0f);
+				triangle_in_vertex_z[1]= fixed16_t(coord[1].z*65536.0f);
+				triangle_in_vertex_z[2]= fixed16_t(coord[2].z*65536.0f);
+				triangle_in_tex_coord[0]= fixed16_t(current_model_polygon[0]->st[0]*65536.0f);
+				triangle_in_tex_coord[1]= tex_y_shift - fixed16_t(current_model_polygon[0]->st[1]*65536.0f);
+				triangle_in_tex_coord[2]= fixed16_t(current_model_polygon[t+1]->st[0]*65536.0f);
+				triangle_in_tex_coord[3]= tex_y_shift - fixed16_t(current_model_polygon[t+1]->st[1]*65536.0f);
+				triangle_in_tex_coord[4]= fixed16_t(current_model_polygon[t+2]->st[0]*65536.0f);
+				triangle_in_tex_coord[5]= tex_y_shift - fixed16_t(current_model_polygon[t+2]->st[1]*65536.0f);
+				triangle_in_color[0 ]= (unsigned char)( current_model_polygon[0]->light[0] );
+				triangle_in_color[1 ]= (unsigned char)( current_model_polygon[0]->light[1] );
+				triangle_in_color[2 ]= (unsigned char)( current_model_polygon[0]->light[2] );
+				triangle_in_color[4 ]= (unsigned char)( current_model_polygon[t+1]->light[0] );
+				triangle_in_color[5 ]= (unsigned char)( current_model_polygon[t+1]->light[1] );
+				triangle_in_color[6 ]= (unsigned char)( current_model_polygon[t+1]->light[2] );
+				triangle_in_color[8 ]= (unsigned char)( current_model_polygon[t+2]->light[0] );
+				triangle_in_color[9 ]= (unsigned char)( current_model_polygon[t+2]->light[1] );
+				triangle_in_color[10]= (unsigned char)( current_model_polygon[t+2]->light[2] );
+				/*triangle_in_color[0 ]= triangle_in_color[1 ]= triangle_in_color[2 ]=
+				triangle_in_color[4 ]= triangle_in_color[5 ]= triangle_in_color[6 ]=
+				triangle_in_color[8 ]= triangle_in_color[9 ]= triangle_in_color[10]= 255;*/
+
+				int draw_result;
+				if(is_fullbright)
+					draw_result= DrawFullbrightTexturedModelTriangleToBuffer(buff);
+				else
+					draw_result= DrawTexturedModelTriangleToBuffer( buff );
+				if( draw_result != 0 )
+				{
+					buff+= 4 * call->vertex_size;
+					call->triangle_count++;
+				}
+
+			}//for triangle in polygon
+		}//for initial model triangles
+	}//if need cull model triangles
 
 	command_buffer.current_pos+= buff- buff0;
 
@@ -598,7 +852,7 @@ void GenerateBeamMesh( entity_t* ent )
 		largest_component= 2;
 
 	
-	const int beam_cylinder_edges= 8;
+	const int beam_cylinder_edges= 10;
 	float cylinder_radius= float(ent->frame) * 0.5f;
 	float direction_sign= 1.0f;
 	if( largest_component == 0 )
@@ -666,13 +920,36 @@ void GenerateBeamMesh( entity_t* ent )
 	//beam_indeces[j+5]= i*2+0;
 }
 
-void DrawBeam( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
+int ClipBeamTriangle( int* triangle_indeces )//returns number of output vertices
+{
+	model_tmp_vertices_stack_pos= 3;
+	for( int i= 0; i< 3; i++ )//generate initial polygon from triangle
+	{
+		current_model_polygon_vertices[i].position[0]= beam_mesh[ triangle_indeces[i]*3   ];
+		current_model_polygon_vertices[i].position[1]= beam_mesh[ triangle_indeces[i]*3+1 ];
+		current_model_polygon_vertices[i].position[2]= beam_mesh[ triangle_indeces[i]*3+2 ];
+		current_model_polygon[i]= current_model_polygon_vertices + i;
+	}
+	int vertex_count= 3;
+
+	for( int i= 0; i< 5; i++ )
+	{
+		vertex_count= ClipModelPolygonByPlane( vertex_count, clip_planes + i );
+		if( vertex_count == 0 )
+			return 0;
+	}
+	return vertex_count;
+}
+
+void DrawBeam( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam_pos )
 {
 	
 	float width_f= float(vid.width) * 65536.0f;
 	float height_f= float(vid.height) * 65536.0f;
 	float width2_f= width_f * 0.5f;
 	float height2_f= height_f * 0.5f;
+	
+	InitFrustrumClipPlanes( normal_mat, cam_pos );
 
 	GenerateBeamMesh(ent);
 	
@@ -694,48 +971,50 @@ void DrawBeam( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 
 	for( int i= 0; i< beam_mesh_triangle_count; i++ )
 	{
-		m_Vec3 pos[3];
-		for(int j= 0; j< 3; j++ )
+		int vertex_count= ClipBeamTriangle( beam_indeces + i*3 );
+		if( vertex_count == 0 )
+			continue;
+		for( int t= 0; t< vertex_count - 2; t++ )
 		{
-			pos[j]= *((m_Vec3*)(beam_mesh + beam_indeces[i*3+j]*3)) * *mat;
-		}
-		if( pos[0].z <= PSR_MIN_ZMIN_FLOAT || pos[1].z <= PSR_MIN_ZMIN_FLOAT || pos[2].z <= PSR_MIN_ZMIN_FLOAT )
+			m_Vec3 pos[3];
+			pos[0]= *((m_Vec3*)current_model_polygon[0  ]->position) * *mat;
+			pos[1]= *((m_Vec3*)current_model_polygon[t+1]->position) * *mat;
+			pos[2]= *((m_Vec3*)current_model_polygon[t+2]->position) * *mat;
+
+			if( pos[0].z <= PSR_MIN_ZMIN_FLOAT || pos[1].z <= PSR_MIN_ZMIN_FLOAT || pos[2].z <= PSR_MIN_ZMIN_FLOAT )
 			continue;
 
-		for(int j= 0; j< 3; j++ )
-		{
-			float inv_z= 1.0f / pos[j].z;
-			pos[j].x= ( pos[j].x * inv_z + 1.0f ) * width2_f;
-			pos[j].y= ( pos[j].y * inv_z + 1.0f ) * height2_f;
-		}
-		if( pos[0].x < 0.0f || pos[0].x > width_f || pos[0].y < 0.0f || pos[0].y > height_f )
-			continue;
-		if( pos[1].x < 0.0f || pos[1].x > width_f || pos[1].y < 0.0f || pos[1].y > height_f )
-			continue;
-		if( pos[2].x < 0.0f || pos[2].x > width_f || pos[2].y < 0.0f || pos[2].y > height_f )
-			continue;
-		//bak face culling
-		float v[4]= { pos[2].x - pos[1].x, pos[2].y - pos[1].y, pos[1].x - pos[0].x, pos[1].y - pos[0].y };
-		if( v[0] * v[3] - v[2] * v[1] < 1.0f )
-			continue;
+			for(int j= 0; j< 3; j++ )
+			{
+				float inv_z= 1.0f / pos[j].z;
+				pos[j].x= ( pos[j].x * inv_z + 1.0f ) * width2_f;
+				pos[j].y= ( pos[j].y * inv_z + 1.0f ) * height2_f;
+			}
 
-		using namespace VertexProcessing;
-		triangle_in_vertex_xy[0]= fixed16_t(pos[0].x);
-		triangle_in_vertex_xy[1]= fixed16_t(pos[0].y);
-		triangle_in_vertex_xy[2]= fixed16_t(pos[1].x);
-		triangle_in_vertex_xy[3]= fixed16_t(pos[1].y);
-		triangle_in_vertex_xy[4]= fixed16_t(pos[2].x);
-		triangle_in_vertex_xy[5]= fixed16_t(pos[2].y);
-		triangle_in_vertex_z[0]= fixed16_t(pos[0].z*65536.0f);
-		triangle_in_vertex_z[1]= fixed16_t(pos[1].z*65536.0f);
-		triangle_in_vertex_z[2]= fixed16_t(pos[2].z*65536.0f);
+			//bak face culling
+			float v[4]= { pos[2].x - pos[1].x, pos[2].y - pos[1].y, pos[1].x - pos[0].x, pos[1].y - pos[0].y };
+			if( v[0] * v[3] - v[2] * v[1] < 1.0f )
+				continue;
 
-		if( DrawBeamTriangleToBuffer(buff)!= 0 )
-		{
-			buff+= 4 * call->vertex_size;
-			call->triangle_count++;
-		}
-	}//for triangles
+			using namespace VertexProcessing;
+			triangle_in_vertex_xy[0]= fixed16_t(pos[0].x);
+			triangle_in_vertex_xy[1]= fixed16_t(pos[0].y);
+			triangle_in_vertex_xy[2]= fixed16_t(pos[1].x);
+			triangle_in_vertex_xy[3]= fixed16_t(pos[1].y);
+			triangle_in_vertex_xy[4]= fixed16_t(pos[2].x);
+			triangle_in_vertex_xy[5]= fixed16_t(pos[2].y);
+			triangle_in_vertex_z[0]= fixed16_t(pos[0].z*65536.0f);
+			triangle_in_vertex_z[1]= fixed16_t(pos[1].z*65536.0f);
+			triangle_in_vertex_z[2]= fixed16_t(pos[2].z*65536.0f);
+
+			if( DrawBeamTriangleToBuffer(buff)!= 0 )
+			{
+				buff+= 4 * call->vertex_size;
+				call->triangle_count++;
+			}
+
+		}//for clipped triangles
+	}//for original beam mesh triangles
 
 	command_buffer.current_pos+= buff - buff0;
 }

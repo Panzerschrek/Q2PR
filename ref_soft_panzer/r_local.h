@@ -595,6 +595,7 @@ extern cvar_t   *r_texture_mode;
 extern cvar_t   *r_lightmap_saturation;
 extern cvar_t   *r_dlights_saturation;
 extern cvar_t   *r_palettized_textures;
+extern cvar_t   *r_clear_color_buffer;
 
 
 

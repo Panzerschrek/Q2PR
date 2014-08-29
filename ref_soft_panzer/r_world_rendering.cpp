@@ -298,7 +298,6 @@ int ClipFaceByPlane( int vertex_count, mplane_t* plane )//returns new vertex cou
 		return 0;
 	else if( discarded_vertex_count == 0 )
 		return vertex_count;
-	//else return 0;//HACK temporary
 
 	int splitted_edge[2];
 	//0 - index of discarded vertex
@@ -413,23 +412,23 @@ void InitFrustrumClipPlanes( m_Mat4* normal_mat, vec3_t transformed_cam_pos )
 	//top plane
 	a= r_newrefdef.fov_y*0.5f*to_rad*angle_scaler;
 	m_Vec3 tmp_normal( 0.0f, -sinf(a), -cosf(a) );
-	*((m_Vec3*)clip_planes[1].normal)= tmp_normal * *normal_mat;
-	clip_planes[1].dist= DotProduct(transformed_cam_pos, clip_planes[1].normal );
+	*((m_Vec3*)clip_planes[3].normal)= tmp_normal * *normal_mat;
+	clip_planes[3].dist= DotProduct(transformed_cam_pos, clip_planes[3].normal );
 	//bottom plane
 	a= r_newrefdef.fov_y*0.5f*to_rad*angle_scaler;
 	tmp_normal.x= 0.0f; tmp_normal.y= -sinf(a); tmp_normal.z= cosf(a);
-	*((m_Vec3*)clip_planes[2].normal)= tmp_normal * *normal_mat;
-	clip_planes[2].dist= DotProduct(transformed_cam_pos, clip_planes[2].normal );
+	*((m_Vec3*)clip_planes[4].normal)= tmp_normal * *normal_mat;
+	clip_planes[4].dist= DotProduct(transformed_cam_pos, clip_planes[4].normal );
 	//left plane
 	a= r_newrefdef.fov_x*0.5f*to_rad*angle_scaler;
 	tmp_normal.x= -cosf(a); tmp_normal.y= -sinf(a); tmp_normal.z= 0.0f;
-	*((m_Vec3*)clip_planes[3].normal)= tmp_normal * *normal_mat;
-	clip_planes[3].dist= DotProduct(transformed_cam_pos, clip_planes[3].normal );
+	*((m_Vec3*)clip_planes[1].normal)= tmp_normal * *normal_mat;
+	clip_planes[1].dist= DotProduct(transformed_cam_pos, clip_planes[1].normal );
 	//right plane
 	a= r_newrefdef.fov_x*0.5f*to_rad*angle_scaler;
 	tmp_normal.x= cosf(a); tmp_normal.y= -sinf(a); tmp_normal.z= 0.0f;
-	*((m_Vec3*)clip_planes[4].normal)= tmp_normal * *normal_mat;
-	clip_planes[4].dist= DotProduct(transformed_cam_pos, clip_planes[4].normal );
+	*((m_Vec3*)clip_planes[2].normal)= tmp_normal * *normal_mat;
+	clip_planes[2].dist= DotProduct(transformed_cam_pos, clip_planes[2].normal );
 
 	clip_plane_count= 5;
 }
@@ -583,12 +582,12 @@ void DrawWorldAlphaSurfaces()
 			ComIn_SetConstantBlendFactor( command_buffer.current_pos + (char*)command_buffer.buffer, 64*3 );
 	while( surf_cout != 0 )
 	{
-		mplane_t* plane= surf->plane;
+		/*mplane_t* plane= surf->plane;
 		float dot= DotProduct(plane->normal, cam_pos) - plane->dist;
 		if( (surf->flags&SURF_PLANEBACK) != 0 )
 			dot= -dot;
 		if( dot <= 0.0f )
-			goto next_surface;
+			goto next_surface;*/
 
 		mtexinfo_t* texinfo= surf->texinfo;
 		int tex_frame= current_frame % texinfo->numframes;
@@ -653,14 +652,14 @@ void DrawWorldTextureChains()
 			continue;
 		while(1)
 		{
-			{
+			/*{
 				mplane_t* plane= surf->plane;
 				float dot= DotProduct(plane->normal, cam_pos) - plane->dist;
 				if( (surf->flags&SURF_PLANEBACK) == SURF_PLANEBACK )
 					dot= -dot;
 				if( dot <= 0.0f )
 					goto next_surface;
-			}
+			}*/
 			face_count++;
 
 			bool no_lightmaps= (surf->flags&SURF_DRAWTURB)!= 0 || (surf->texinfo->flags&SURF_WARP)!= 0 || surf->samples == NULL;
@@ -739,7 +738,8 @@ void DrawTree_r( mnode_t* node, vec3_t cam_pos )
 		int front, back;
 		float* normal= node->plane->normal;
 		//DO NOT CHANGE THIS!!! THIS IS BSP SORTING ORDER
-		if( DotProduct(normal, cam_pos) <= node->plane->dist )
+		float dot= DotProduct(normal, cam_pos) - node->plane->dist;
+		if( dot <= 0.0f )
 			front= 1;
 		else
 			front= 0;
@@ -754,6 +754,10 @@ void DrawTree_r( mnode_t* node, vec3_t cam_pos )
 		for( int s= 0; s< node->numsurfaces; s++, surf++ )
 		{
 			if( surf->texinfo == NULL )
+				continue;
+
+			float surf_sign= ( (surf->flags&SURF_PLANEBACK) == 0 ) ? 1.0f : -1.0f;
+			if( dot * surf_sign < 0.0f )
 				continue;
 
 			surfaces_pushed++;
@@ -848,8 +852,8 @@ void BuildSurfaceLists(m_Mat4* mat, vec3_t new_cam_pos )
 
 	DrawTree_r( r_worldmodel->nodes, cam_pos );
 
-	char surfaces_statistic_str[64]; sprintf( surfaces_statistic_str, "surfaces pushed: %d\n", surfaces_pushed );
-	DrawCharString( 8, vid.height-16, surfaces_statistic_str );
+	//char surfaces_statistic_str[64]; sprintf( surfaces_statistic_str, "surfaces pushed: %d\n", surfaces_pushed );
+	//DrawCharString( 8, vid.height-16, surfaces_statistic_str );
 
 
 	m_Mat4 worlmodel_lights_transform_mat;

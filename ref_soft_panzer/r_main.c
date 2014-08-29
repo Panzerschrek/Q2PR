@@ -161,6 +161,7 @@ cvar_t  *r_lightmap_saturation;
 cvar_t  *r_dlights_saturation;
 cvar_t	*r_palettized_textures;
 cvar_t	*r_interpolate_videos;
+cvar_t	*r_clear_color_buffer;
 
 /*
 after map switching some resources ( models and ther skins, textures )
@@ -319,6 +320,7 @@ void PANZER_Register (void)
 	r_use_multithreading= ri.Cvar_Get( "r_use_multithreading", "0", CVAR_ARCHIVE ); r_use_multithreading->modified= false;
 	r_palettized_textures= ri.Cvar_Get( "r_palettized_textures", "0", CVAR_ARCHIVE ); r_palettized_textures->modified= false;
 	r_interpolate_videos= ri.Cvar_Get( "r_interpolate_videos", "1", CVAR_ARCHIVE );
+	r_clear_color_buffer= ri.Cvar_Get( "r_clear_color_buffer", "0", CVAR_ARCHIVE );
 
 	ri.Cmd_AddCommand( "flashlight", R_Flashlight_f );
 	ri.Cmd_ExecuteText( 0, "bind f flashlight" );

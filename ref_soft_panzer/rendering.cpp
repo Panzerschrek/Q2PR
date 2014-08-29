@@ -18,8 +18,8 @@ extern "C" swstate_t sw_state;
 
 void DrawSpriteEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos );
 void DrawBrushEntity( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam_pos, bool is_aplha );
-void DrawAliasEntity(  entity_t* ent, m_Mat4* mat, vec3_t cam_pos );
-void DrawBeam( entity_t* ent, m_Mat4* mat, vec3_t cam_pos );
+void DrawAliasEntity(  entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam_pos );
+void DrawBeam( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam_pos );
 /*
 ----command buffer-------
 */
@@ -643,13 +643,13 @@ void DrawEntities(m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam_pos, bool alpha_en
 
 		model= ent->model;
 		if( (ent->flags&RF_BEAM) != 0 )
-			DrawBeam( ent, mat, cam_pos );
+			DrawBeam( ent, mat, normal_mat, cam_pos );
 		else if( model->type == mod_sprite )
 			DrawSpriteEntity( ent, mat, cam_pos );
 		else if( model->type == mod_brush )
 			DrawBrushEntity( ent, mat, normal_mat, cam_pos, alpha_entities );
 		else if( model->type == mod_alias )
-			DrawAliasEntity( ent, mat, cam_pos );
+			DrawAliasEntity( ent, mat, normal_mat,  cam_pos );
 		else
 		{
 			printf( "unknown model type!\n" );
@@ -704,9 +704,12 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 
 	if( (fd->rdflags&RDF_NOWORLDMODEL) == 0 )
 	{
-		/*unsigned char clear_color[]= { 245, 16, 251, 0 };
-		command_buffer.current_pos+= ComIn_ClearColorBuffer(
-			(char*)command_buffer.buffer + command_buffer.current_pos, clear_color );*/
+		if( r_clear_color_buffer->value )
+		{
+			unsigned char clear_color[]= { 245, 16, 251, 0 };
+			command_buffer.current_pos+= ComIn_ClearColorBuffer(
+				(char*)command_buffer.buffer + command_buffer.current_pos, clear_color );
+		}
 
 		command_buffer.current_pos+= ComIn_SetTexturePaletteRaw(
 			(char*)command_buffer.buffer + command_buffer.current_pos, (unsigned char*)d_8to24table );
