@@ -1203,9 +1203,9 @@ void DrawTriangleUp()
                 else if( texture_mode == TEXTURE_FAKE_FILTER )
                 {
 					const static int shift_table[]= { 16384,0, 32768,49152, 49152,32768, 0,16384 };
+					int ind= (x&1)|((y&1)<<1);
 					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
 					{
-						int ind= (x&1)|((y&1)<<1);
 						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
 						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
 						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
@@ -1215,15 +1215,10 @@ void DrawTriangleUp()
 						TexelFetchNearest( (v+dv)>>16, (u+du)>>16, color );
 					}
 					else
-					{
-						int ind= (x&1)|((y&1)<<1);
-						int uu= shift_table[ind+1];
-						int vv= shift_table[ind];
-						TexelFetchNearest( ( Fixed16Mul( line_tc[0], final_z ) + uu )>> 16,
-										   ( Fixed16Mul( line_tc[1], final_z ) + vv )>> 16, color  );
-					}
+						TexelFetchNearest( ( Fixed16Mul( line_tc[0], final_z ) + shift_table[ind+1] )>> 16,
+										   ( Fixed16Mul( line_tc[1], final_z ) + shift_table[ind] )>> 16, color  );
                 }
-                else if( texture_mode == TEXTURE_NEAREST_MIPMAP )
+                /*else if( texture_mode == TEXTURE_NEAREST_MIPMAP )
                 {
                     TexelFetchNearestMipmap( Fixed16MulResultToInt( line_tc[0], final_z ),
                                              Fixed16MulResultToInt( line_tc[1], final_z ), Fixed16MulResultToInt( line_lod, final_z ), color );
@@ -1235,21 +1230,55 @@ void DrawTriangleUp()
                     TexelFetchNearestMipmap( ( Fixed16Mul( line_tc[0], final_z ) + yy )>> 16,
                                              ( Fixed16Mul( line_tc[1], final_z ) + xx )>> 16,
                                              Fixed16MulResultToInt( line_lod, final_z ), color );
-                }
+                }*/
 				else if( texture_mode == TEXTURE_PALETTIZED_NEAREST )
-					TexelFetchNearestPlaettized(
-					Fixed16MulResultToInt( line_tc[0], final_z ),
-					Fixed16MulResultToInt( line_tc[1], final_z ), color );
+				{
+					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
+					{
+						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
+						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
+						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
+						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
+						TexelFetchNearestPlaettized( (v+dv)>>16, (u+du)>>16, color );
+					}
+					else 
+						TexelFetchNearestPlaettized(
+							Fixed16MulResultToInt( line_tc[0], final_z ),
+							Fixed16MulResultToInt( line_tc[1], final_z ), color );
+				}
 				else if( texture_mode == TEXTURE_PALETTIZED_LINEAR )
-					TexelFetchLinearPlaettized( Fixed16Mul( line_tc[0], final_z ),
-					Fixed16Mul( line_tc[1] , final_z ), color );
+				{
+					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
+					{
+						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
+						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
+						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
+						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
+						TexelFetchLinearPlaettized( v+dv, u+du, color );
+					}
+					else
+						TexelFetchLinearPlaettized( Fixed16Mul( line_tc[0], final_z ),
+							Fixed16Mul( line_tc[1] , final_z ), color );
+				}
 				else if( texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER )
 				{
-					int xx= ((y^x)&1)<<15;
-					TexelFetchNearestPlaettized( ( Fixed16Mul( line_tc[0], final_z ) + xx )>> 16,
-                                       ( Fixed16Mul( line_tc[1], final_z ) + xx )>> 16, color );
+					const static int shift_table[]= { 16384,0, 32768,49152, 49152,32768, 0,16384 };
+					int ind= (x&1)|((y&1)<<1);
+					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
+					{
+						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
+						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
+						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
+						du+= shift_table[ind+1];
+						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
+						dv+= shift_table[ind];
+						TexelFetchNearestPlaettized( (v+dv)>>16, (u+du)>>16, color );
+					}
+					else
+						TexelFetchNearestPlaettized(( Fixed16Mul( line_tc[0], final_z ) + shift_table[ind+1] )>> 16,
+													( Fixed16Mul( line_tc[1], final_z ) + shift_table[ind] )>> 16, color );
 				}
-				else if( texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP )
+				/*else if( texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP )
 					TexelFetchNearestMipmapPlaettized( Fixed16MulResultToInt( line_tc[0], final_z ),
                                              Fixed16MulResultToInt( line_tc[1], final_z ),
 											 Fixed16MulResultToInt( line_lod, final_z ), color );
@@ -1259,7 +1288,7 @@ void DrawTriangleUp()
 					TexelFetchNearestMipmapPlaettized( ( Fixed16Mul( line_tc[0], final_z ) + xx )>> 16,
                                              ( Fixed16Mul( line_tc[1], final_z ) + xx )>> 16,
                                              Fixed16MulResultToInt( line_lod, final_z ), color );
-				}
+				}*/
             }//color from texture
 
             if( alpha_test_mode != ALPHA_TEST_NONE )
@@ -1701,8 +1730,6 @@ void DrawTriangleDown()
         {
             //scale z to convert to depth buffer format
 			depth_buffer_t depth_z;
-			//if( additional_effect_mode == ADDITIONAL_EFFECT_DEPTH_HACK ) depth_z= final_z >> (PSR_DEPTH_SCALER_LOG2+PSR_DEPTH_HACK_SCALER);
-			//else depth_z= final_z >> PSR_DEPTH_SCALER_LOG2;
 			depth_z= (line_inv_z >> ( PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 + PSR_INV_MIN_ZMIN_INT_LOG2 ) );
             if( depth_test_mode != DEPTH_TEST_NONE )
             {
@@ -1773,9 +1800,9 @@ void DrawTriangleDown()
                 else if( texture_mode == TEXTURE_FAKE_FILTER )
                 {
                     const static int shift_table[]= { 16384,0, 32768,49152, 49152,32768, 0,16384 };
+					int ind= (x&1)|((y&1)<<1);
 					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
 					{
-						int ind= (x&1)|((y&1)<<1);
 						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
 						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
 						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
@@ -1785,15 +1812,10 @@ void DrawTriangleDown()
 						TexelFetchNearest( (v+dv)>>16, (u+du)>>16, color );
 					}
 					else
-					{
-						int ind= (x&1)|((y&1)<<1);
-						int uu= shift_table[ind+1];
-						int vv= shift_table[ind];
-						TexelFetchNearest( ( Fixed16Mul( line_tc[0], final_z ) + uu )>> 16,
-										   ( Fixed16Mul( line_tc[1], final_z ) + vv )>> 16, color  );
-					}
+						TexelFetchNearest( ( Fixed16Mul( line_tc[0], final_z ) + shift_table[ind+1] )>> 16,
+										   ( Fixed16Mul( line_tc[1], final_z ) + shift_table[ind] )>> 16, color  );
                 }
-                else if( texture_mode == TEXTURE_NEAREST_MIPMAP )
+                /*else if( texture_mode == TEXTURE_NEAREST_MIPMAP )
                 {
                     TexelFetchNearestMipmap( Fixed16MulResultToInt( line_tc[0], final_z ),
                                              Fixed16MulResultToInt( line_tc[1], final_z ), Fixed16MulResultToInt( line_lod, final_z ), color );
@@ -1805,20 +1827,56 @@ void DrawTriangleDown()
                     TexelFetchNearestMipmap( ( Fixed16Mul( line_tc[0], final_z ) + yy )>> 16,
                                              ( Fixed16Mul( line_tc[1], final_z ) + xx )>> 16,
                                              Fixed16MulResultToInt( line_lod, final_z ), color );
-                }
+                }*/
 				else if( texture_mode == TEXTURE_PALETTIZED_NEAREST )
-					TexelFetchNearestPlaettized(
-					Fixed16MulResultToInt( line_tc[0], final_z ),
-					Fixed16MulResultToInt( line_tc[1], final_z ), color );
+				{
+					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
+					{
+						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
+						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
+						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
+						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
+						TexelFetchNearestPlaettized( (v+dv)>>16, (u+du)>>16, color );
+					}
+					else
+						TexelFetchNearestPlaettized(
+							Fixed16MulResultToInt( line_tc[0], final_z ),
+							Fixed16MulResultToInt( line_tc[1], final_z ), color );
+				}
 				else if( texture_mode == TEXTURE_PALETTIZED_LINEAR )
-					TexelFetchLinearPlaettized( Fixed16Mul( line_tc[0], final_z ), Fixed16Mul( line_tc[1] , final_z ), color );
+				{
+					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
+					{
+						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
+						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
+						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
+						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
+						TexelFetchLinearPlaettized( (v+dv), (u+du), color );
+					}
+					else
+						TexelFetchLinearPlaettized( Fixed16Mul( line_tc[0], final_z ), Fixed16Mul( line_tc[1] , final_z ), color );
+				}
 				else if( texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER )
 				{
-					int xx= ((y^x)&1)<<15;
-					TexelFetchNearestPlaettized( ( Fixed16Mul( line_tc[0], final_z ) + xx )>> 16,
-                                       ( Fixed16Mul( line_tc[1], final_z ) + xx )>> 16, color );
+					const static int shift_table[]= { 16384,0, 32768,49152, 49152,32768, 0,16384 };
+					int ind= (x&1)|((y&1)<<1);
+					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
+					{
+						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
+						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
+						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
+						du+= shift_table[ind+1];
+						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
+						dv+= shift_table[ind];
+						TexelFetchNearestPlaettized( (v+dv)>>16, (u+du)>>16, color );
+					}
+					else
+					{
+						TexelFetchNearestPlaettized((Fixed16Mul( line_tc[0], final_z  ) + shift_table[ind+1])>>16,
+													(Fixed16Mul( line_tc[1], final_z ) + shift_table[ind])>>16, color );
+					}
 				}
-				else if( texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP )
+				/*else if( texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP )
 					TexelFetchNearestMipmapPlaettized( Fixed16MulResultToInt( line_tc[0], final_z ),
                                              Fixed16MulResultToInt( line_tc[1], final_z ), Fixed16MulResultToInt( line_lod, final_z ), color );
                   
@@ -1828,7 +1886,7 @@ void DrawTriangleDown()
 					TexelFetchNearestMipmapPlaettized( ( Fixed16Mul( line_tc[0], final_z ) + xx )>> 16,
                                              ( Fixed16Mul( line_tc[1], final_z ) + xx )>> 16,
                                              Fixed16MulResultToInt( line_lod, final_z ), color );
-				}
+				}*/
             }//color from texture
 
             if( alpha_test_mode != ALPHA_TEST_NONE )
