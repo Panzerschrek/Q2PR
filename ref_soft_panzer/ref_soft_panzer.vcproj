@@ -252,7 +252,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalOptions="/QA21164 /QAieee1 "
+				AdditionalOptions="/QA21164 /QAieee1 /arch:SSE"
 				Optimization="3"
 				InlineFunctionExpansion="2"
 				EnableIntrinsicFunctions="true"
@@ -834,7 +834,7 @@
 						>
 						<Tool
 							Name="VCCLCompilerTool"
-							AssemblerOutput="4"
+							AssemblerOutput="1"
 						/>
 					</FileConfiguration>
 					<FileConfiguration

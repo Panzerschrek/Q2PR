@@ -726,13 +726,13 @@ void Mod_LoadFaces (lump_t *l)
 		if (out->texinfo->flags & SURF_WARP)
 		{
 			out->flags |= SURF_DRAWTURB;
-			//PANZER - remove it, i dont` know, what is this, but lightmaps on water surfaces are crazy
 			for (i=0 ; i<2 ; i++)
 			{
 				out->extents[i] = 16384;
 				out->texturemins[i] = -8192;
 			}
-			continue;
+			//PANZER - remove continue, we want to mark flowing surfaces
+			//continue;
 		}
 //==============
 //PGM

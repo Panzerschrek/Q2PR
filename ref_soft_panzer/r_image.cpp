@@ -134,6 +134,21 @@ extern "C" image_t	*R_FindImage (char *name, imagetype_t type)
 				break;
 			}
 		}
+		//mirror texture, if it is a pic
+		/*if( type == it_pic || true )
+		{
+			for( int y= 0; y< (img->height>>1); y++ )
+			{
+				unsigned char* pix0= img->pixels[0] + y * img->width;
+				unsigned char* pix1= img->pixels[0] + ( img->height - 1 - y )* img->width;
+				for( int x= 0; x< img->width; x++ )
+				{
+					unsigned char tmp= pix0[x];
+					pix0[x]= pix1[x];
+					pix1[x]= tmp;
+				}
+			}
+		}*/
 		
 		bool need_build_palettized_lods= r_palettized_textures->value != 0.0f && type == it_wall;
 		int t= img - r_images;

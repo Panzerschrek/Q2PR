@@ -514,10 +514,6 @@ inline void LightmapFetchLinearRGBS( fixed16_t u, fixed16_t v, unsigned char* ou
     mixed_s_color[0]= s_color[0] * dx1 + s_color[1] * dx;
     mixed_s_color[1]= s_color[2] * dx1 + s_color[3] * dx;
 
-    /*s= ( mixed_s_color[0] * dy1 + mixed_s_color[1] * dy )>>16;
-    out_lightmap[0]= ( out_lightmap[0] * s )>> 8;
-    out_lightmap[1]= ( out_lightmap[1] * s )>> 8;
-    out_lightmap[2]= ( out_lightmap[2] * s )>> 8;*/
 	s= mixed_s_color[0] * dy1 + mixed_s_color[1] * dy;
 	out_lightmap[0]= ( out_lightmap[0] * s )>> 24;
     out_lightmap[1]= ( out_lightmap[1] * s )>> 24;
@@ -537,9 +533,9 @@ void LightmapFetchColoredLinear( fixed16_t u, fixed16_t v, unsigned char* out_li
     dx1= 256 - dx;
     dy1= 256 - dy;
 
-    int s;
-    int colors[16];
-    int mixed_colors[8];
+	int s;
+    int colors[12];
+    int mixed_colors[6];
 
     s= x + y * current_lightmap_size_x;
     s<<= 2;
@@ -548,30 +544,30 @@ void LightmapFetchColoredLinear( fixed16_t u, fixed16_t v, unsigned char* out_li
     colors[ 2]= current_lightmap_data[s+2];
     s= x1 + y * current_lightmap_size_x;
     s<<= 2;
-    colors[ 4]= current_lightmap_data[s+0];
-    colors[ 5]= current_lightmap_data[s+1];
-    colors[ 6]= current_lightmap_data[s+2];
+    colors[ 3]= current_lightmap_data[s+0];
+    colors[ 4]= current_lightmap_data[s+1];
+    colors[ 5]= current_lightmap_data[s+2];
     s= x +  y1 * current_lightmap_size_x;
     s<<= 2;
-    colors[ 8]= current_lightmap_data[s+0];
-    colors[ 9]= current_lightmap_data[s+1];
-    colors[10]= current_lightmap_data[s+2];
+    colors[ 6]= current_lightmap_data[s+0];
+    colors[ 7]= current_lightmap_data[s+1];
+    colors[ 8]= current_lightmap_data[s+2];
     s= x1 + y1 * current_lightmap_size_x;
     s<<= 2;
-    colors[12]= current_lightmap_data[s+0];
-    colors[13]= current_lightmap_data[s+1];
-    colors[14]= current_lightmap_data[s+2];
+    colors[ 9]= current_lightmap_data[s+0];
+    colors[10]= current_lightmap_data[s+1];
+    colors[11]= current_lightmap_data[s+2];
 
-    mixed_colors[0]= ( colors[ 0] * dx1 + colors[ 4] * dx );
-    mixed_colors[1]= ( colors[ 1] * dx1 + colors[ 5] * dx );
-    mixed_colors[2]= ( colors[ 2] * dx1 + colors[ 6] * dx );
+    mixed_colors[0]= ( colors[ 0] * dx1 + colors[ 3] * dx );
+    mixed_colors[1]= ( colors[ 1] * dx1 + colors[ 4] * dx );
+    mixed_colors[2]= ( colors[ 2] * dx1 + colors[ 5] * dx );
 
-    mixed_colors[4]= ( colors[ 8] * dx1 + colors[12] * dx );
-    mixed_colors[5]= ( colors[ 9] * dx1 + colors[13] * dx );
-    mixed_colors[6]= ( colors[10] * dx1 + colors[14] * dx );
-    out_lightmap[0]= ( mixed_colors[0] * dy1 + mixed_colors[4] * dy ) >> 16;
-    out_lightmap[1]= ( mixed_colors[1] * dy1 + mixed_colors[5] * dy ) >> 16;
-    out_lightmap[2]= ( mixed_colors[2] * dy1 + mixed_colors[6] * dy ) >> 16;
+    mixed_colors[3]= ( colors[ 6] * dx1 + colors[ 9] * dx );
+    mixed_colors[4]= ( colors[ 7] * dx1 + colors[10] * dx );
+    mixed_colors[5]= ( colors[ 8] * dx1 + colors[11] * dx );
+    out_lightmap[0]= ( mixed_colors[0] * dy1 + mixed_colors[3] * dy ) >> 16;
+    out_lightmap[1]= ( mixed_colors[1] * dy1 + mixed_colors[4] * dy ) >> 16;
+    out_lightmap[2]= ( mixed_colors[2] * dy1 + mixed_colors[5] * dy ) >> 16;
 }
 
 
@@ -927,6 +923,53 @@ fixed16_t line_light, d_line_light;
 fixed16_t line_lod, d_line_lod;
 fixed16_t line_inv_z, d_line_inv_z;
 
+/*
+inline void ShadeColorByLightmap( unsigned char* color, unsigned char* lightmap )
+{
+	__asm
+	{
+		mov esi, color
+		mov edi, lightmap
+		mov ecx, 255
+
+		movzx eax, byte ptr[esi]
+		mov edx, eax
+		shl edx, 1
+		add eax, edx
+		movzx ebx, byte ptr[edi]
+		imul ebx
+		shr eax, 8
+		cmp eax, ecx
+		cmovg eax, ecx
+		mov byte ptr[esi], al
+
+		movzx eax, byte ptr[esi+1]
+		mov edx, eax
+		shl edx, 1
+		add eax, edx
+		movzx ebx, byte ptr[edi+1]
+		imul ebx
+		shr eax, 8
+		cmp eax, ecx
+		cmovg eax, ecx
+		mov byte ptr[esi+1], al
+
+		movzx eax, byte ptr[esi+2]
+		mov edx, eax
+		shl edx, 1
+		add eax, edx
+		movzx ebx, byte ptr[edi+2]
+		imul ebx
+		shr eax, 8
+		cmp eax, ecx
+		cmovg eax, ecx
+		mov byte ptr[esi+2], al
+	}
+}*/
+
+
+const static int dithering_shift_table[]= { 16384,0, 32768,49152, 49152,32768, 0,16384 };
+
 template<
 enum ColorMode color_mode,
 enum TextureMode texture_mode,
@@ -983,7 +1026,6 @@ void ScanLines()
                 x<= ( x_end>>PSR_LINE_SEGMENT_SIZE_LOG2 ) +2;
                 x++, inv_z+= ( PSR_LINE_SEGMENT_SIZE * d_line_inv_z )  )
         {
-            
             scanline_z[x]= Fixed16Invert(FastIntMax( inv_z>>PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2, 65536/PSR_MIN_ZMIN ) );
         }
 #endif
@@ -998,22 +1040,29 @@ void ScanLines()
 			}
             //scale z to convert to depth buffer format
 			depth_buffer_t depth_z;
-			depth_z= (line_inv_z >> ( PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 + PSR_INV_MIN_ZMIN_INT_LOG2 ) );
-            if( depth_test_mode != DEPTH_TEST_NONE )
-            {
-                if( depth_test_mode == DEPTH_TEST_LESS )
-                    if( depth_z >= *depth_p )
-                         goto next_pixel;
-                if( depth_test_mode == DEPTH_TEST_GREATER )
-                    if( depth_z <= *depth_p )
-                         goto next_pixel;
-                if( depth_test_mode == DEPTH_TEST_EQUAL )
-                    if( depth_z != *depth_p )
-                         goto next_pixel;
-                if( depth_test_mode == DEPTH_TEST_NOT_EQUAL )
-                    if( depth_z == *depth_p )
-                         goto next_pixel;
-            }
+			if( additional_effect_mode == ADDITIONAL_EFFECT_DEPTH_HACK )
+			{
+				depth_z= 65535 - (line_inv_z >> ( PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 + PSR_INV_MIN_ZMIN_INT_LOG2 ) );
+				depth_z= 65535 - (depth_z>>PSR_DEPTH_HACK_SCALER);
+			}
+			else
+				depth_z= (line_inv_z >> ( PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 + PSR_INV_MIN_ZMIN_INT_LOG2 ) );
+			if( depth_test_mode != DEPTH_TEST_NONE )
+			{
+				if( depth_test_mode == DEPTH_TEST_LESS )
+					if( depth_z >= *depth_p )
+						 goto next_pixel;
+				if( depth_test_mode == DEPTH_TEST_GREATER )
+					if( depth_z <= *depth_p )
+						 goto next_pixel;
+				if( depth_test_mode == DEPTH_TEST_EQUAL )
+					if( depth_z != *depth_p )
+						 goto next_pixel;
+				if( depth_test_mode == DEPTH_TEST_NOT_EQUAL )
+					if( depth_z == *depth_p )
+						 goto next_pixel;
+				
+			}//if depth test
 
 			 PSR_ALIGN_4 unsigned char color[4];
 #ifdef PSR_FAST_PERSECTIVE
@@ -1024,9 +1073,8 @@ void ScanLines()
                 final_z= ( scanline_z[i] * d1 + scanline_z[i+1] * d )>> PSR_LINE_SEGMENT_SIZE_LOG2;
             }
 #else
-            fixed16_t final_z= Fixed16Invert( line_inv_z >> PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 );
-			//HACK
-			//fixed16_t final_z= Fixed16Invert( FastIntMax( line_inv_z >> PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2, 65536/PSR_MIN_ZMIN ) );
+            //fixed16_t final_z= Fixed16Invert( line_inv_z >> PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 );
+			 fixed16_t final_z= Fixed16DepthInvert( line_inv_z );
 #endif
 
             if( color_mode == COLOR_CONSTANT )
@@ -1036,7 +1084,7 @@ void ScanLines()
                 for( int i= 0; i< 4; i++ )
                     color[i]= Fixed16MulResultToInt( line_color[i], final_z )>>PSR_COLOR_DELTA_MULTIPLER_LOG2;
             }
-            else if( color_mode == COLOR_FROM_TEXTURE )
+			else if( color_mode == COLOR_FROM_TEXTURE )
             {
                 if( texture_mode == TEXTURE_NEAREST )
 				{
@@ -1067,21 +1115,20 @@ void ScanLines()
 				}
                 else if( texture_mode == TEXTURE_FAKE_FILTER )
                 {
-					const static int shift_table[]= { 16384,0, 32768,49152, 49152,32768, 0,16384 };
 					int ind= (x&1)|((y&1)<<1);
 					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
 					{
 						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
 						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
 						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
-						du+= shift_table[ind+1];
+						du+= dithering_shift_table[ind+1];
 						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
-						dv+= shift_table[ind];
+						dv+= dithering_shift_table[ind];
 						TexelFetchNearest( (v+dv)>>16, (u+du)>>16, color );
 					}
 					else
-						TexelFetchNearest( ( Fixed16Mul( line_tc[0], final_z ) + shift_table[ind+1] )>> 16,
-										   ( Fixed16Mul( line_tc[1], final_z ) + shift_table[ind] )>> 16, color  );
+						TexelFetchNearest( ( Fixed16Mul( line_tc[0], final_z ) + dithering_shift_table[ind+1] )>> 16,
+										   ( Fixed16Mul( line_tc[1], final_z ) + dithering_shift_table[ind] )>> 16, color  );
                 }
                 /*else if( texture_mode == TEXTURE_NEAREST_MIPMAP )
                 {
@@ -1127,21 +1174,20 @@ void ScanLines()
 				}
 				else if( texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER )
 				{
-					const static int shift_table[]= { 16384,0, 32768,49152, 49152,32768, 0,16384 };
 					int ind= (x&1)|((y&1)<<1);
 					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
 					{
 						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
 						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
 						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
-						du+= shift_table[ind+1];
+						du+= dithering_shift_table[ind+1];
 						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
-						dv+= shift_table[ind];
+						dv+= dithering_shift_table[ind];
 						TexelFetchNearestPlaettized( (v+dv)>>16, (u+du)>>16, color );
 					}
 					else
-						TexelFetchNearestPlaettized(( Fixed16Mul( line_tc[0], final_z ) + shift_table[ind+1] )>> 16,
-													( Fixed16Mul( line_tc[1], final_z ) + shift_table[ind] )>> 16, color );
+						TexelFetchNearestPlaettized(( Fixed16Mul( line_tc[0], final_z ) + dithering_shift_table[ind+1] )>> 16,
+													( Fixed16Mul( line_tc[1], final_z ) + dithering_shift_table[ind] )>> 16, color );
 				}
 				/*else if( texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP )
 					TexelFetchNearestMipmapPlaettized( Fixed16MulResultToInt( line_tc[0], final_z ),
@@ -1201,6 +1247,13 @@ void ScanLines()
                 color[0]= FastIntUByteMulClamp255( final_light[0], color[0] );
                 color[1]= FastIntUByteMulClamp255( final_light[1], color[1] );
                 color[2]= FastIntUByteMulClamp255( final_light[2], color[2] );
+				/*final_light[0]= ( Fixed16MulResultToInt( line_color[0], final_z ) * color[0] )>>8;
+				if( final_light[0] > 255 ) final_light[0]= 255; color[0]= final_light[0];
+				final_light[1]= ( Fixed16MulResultToInt( line_color[1], final_z ) * color[1] )>>8;
+				if( final_light[1] > 255 ) final_light[1]= 255; color[1]= final_light[1];
+				final_light[2]= ( Fixed16MulResultToInt( line_color[2], final_z ) * color[2] )>>8;
+				if( final_light[2] > 255 ) final_light[2]= 255; color[2]= final_light[2];*/
+
             }
             else if( lighting_mode == LIGHTING_FROM_LIGHTMAP )
             {
@@ -1214,25 +1267,34 @@ void ScanLines()
 				else if( lightmap_mode == LIGHTMAP_LINEAR )
 				{
 					int light= LightmapFetchLinear( Fixed16Mul(line_tc[2], final_z), Fixed16Mul(line_tc[3], final_z) )*3;
-					color[0]= FastIntUByteMulClamp255(light,color[0]);
+					/*color[0]= FastIntUByteMulClamp255(light,color[0]);
 					color[1]= FastIntUByteMulClamp255(light,color[1]);
-					color[2]= FastIntUByteMulClamp255(light,color[2]);
+					color[2]= FastIntUByteMulClamp255(light,color[2]);*/
+					int c= (light * color[0])>>8; if( c > 255 ) c= 255; color[0]= c;//faster
+					c= (light * color[1])>>8; if( c > 255 ) c= 255; color[1]= c;
+					c= (light * color[2])>>8; if( c > 255 ) c= 255; color[2]= c;
 				}
 				else if( lightmap_mode == LIGHTMAP_COLORED_RGBS_LINEAR )
 				{
 					unsigned char light[4];
 					LightmapFetchLinearRGBS(Fixed16Mul(line_tc[2], final_z), Fixed16Mul(line_tc[3], final_z), light );
-					color[0]= FastIntUByteMulClamp255(light[0]*3,color[0]);
+					/*color[0]= FastIntUByteMulClamp255(light[0]*3,color[0]);
 					color[1]= FastIntUByteMulClamp255(light[1]*3,color[1]);
-					color[2]= FastIntUByteMulClamp255(light[2]*3,color[2]);
+					color[2]= FastIntUByteMulClamp255(light[2]*3,color[2]);*/
+					int c= (light[0] * 3 * color[0])>>8; if( c > 255 ) c= 255; color[0]= c;//faster
+					c= (light[1] * 3 * color[1])>>8; if( c > 255 ) c= 255; color[1]= c;
+					c= (light[2] * 3 * color[2])>>8; if( c > 255 ) c= 255; color[2]= c;
 				}
 				else if( lightmap_mode == LIGHTMAP_COLORED_LINEAR )
 				{
 					unsigned char light[4];
 					LightmapFetchColoredLinear(Fixed16Mul(line_tc[2], final_z), Fixed16Mul(line_tc[3], final_z), light );
-					color[0]= FastIntUByteMulClamp255(light[0]*3,color[0]);
+					/*color[0]= FastIntUByteMulClamp255(light[0]*3,color[0]);
 					color[1]= FastIntUByteMulClamp255(light[1]*3,color[1]);
-					color[2]= FastIntUByteMulClamp255(light[2]*3,color[2]);
+					color[2]= FastIntUByteMulClamp255(light[2]*3,color[2]);*/
+					int c= (light[0] * 3 * color[0])>>8; if( c > 255 ) c= 255; color[0]= c;//faster
+					c= (light[1] * 3 * color[1])>>8; if( c > 255 ) c= 255; color[1]= c;
+					c= (light[2] * 3 * color[2])>>8; if( c > 255 ) c= 255; color[2]= c;
 				}
             }
             else if( lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
@@ -1368,35 +1430,49 @@ void CalculateLineGradients()
 
 	fixed16_t dx= triangle_in_vertex_xy[4] - triangle_in_vertex_xy[2];// triangle width
 	if( dx < 16384 )//dx is small, delta values nothing
-		dx= 16384<<16;
-
-	if( color_mode == COLOR_PER_VERTEX )
 	{
-		for( int i= 0; i< 4; i++ )
-			  d_line_color[i]= Fixed16Div( (triangle_in_color[i+8]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[2] - (triangle_in_color[i+4]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[1], dx );
+		if( color_mode == COLOR_PER_VERTEX )
+			 d_line_color[0]= d_line_color[1]= d_line_color[2]= d_line_color[3]= 0;
+		else if( color_mode == COLOR_FROM_TEXTURE )
+			d_line_tc[0]= d_line_tc[1]= 0;
+		if( lighting_mode == LIGHTING_PER_VERTEX )
+			d_line_light= 0;
+		else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
+			 d_line_color[0]= d_line_color[1]= d_line_color[2]= 0;
+		else if( lighting_mode == LIGHTING_FROM_LIGHTMAP || lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
+			d_line_tc[2]= d_line_tc[3]= 0;
+		d_line_inv_z= 0;
 	}
-	else if( color_mode == COLOR_FROM_TEXTURE )
+	else
 	{
-		d_line_tc[0]= Fixed16Div( Fixed16Mul( triangle_in_tex_coord[0+4], inv_vertex_z[2] ) - Fixed16Mul( triangle_in_tex_coord[0+2], inv_vertex_z[1] ), dx );
-		d_line_tc[1]= Fixed16Div( Fixed16Mul( triangle_in_tex_coord[1+4], inv_vertex_z[2] ) - Fixed16Mul( triangle_in_tex_coord[1+2], inv_vertex_z[1] ), dx );
-	}
+		if( color_mode == COLOR_PER_VERTEX )
+		{
+			for( int i= 0; i< 4; i++ )
+				  d_line_color[i]= Fixed16Div( (triangle_in_color[i+8]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[2] - (triangle_in_color[i+4]<<PSR_COLOR_DELTA_MULTIPLER_LOG2) * inv_vertex_z[1], dx );
+		}
+		else if( color_mode == COLOR_FROM_TEXTURE )
+		{
+			d_line_tc[0]= Fixed16Div( Fixed16Mul( triangle_in_tex_coord[0+4], inv_vertex_z[2] ) - Fixed16Mul( triangle_in_tex_coord[0+2], inv_vertex_z[1] ), dx );
+			d_line_tc[1]= Fixed16Div( Fixed16Mul( triangle_in_tex_coord[1+4], inv_vertex_z[2] ) - Fixed16Mul( triangle_in_tex_coord[1+2], inv_vertex_z[1] ), dx );
+		}
 
-	if( lighting_mode == LIGHTING_PER_VERTEX )
-        d_line_light= Fixed16Div( triangle_in_light[2] * inv_vertex_z[2] - triangle_in_light[1] * inv_vertex_z[1], dx );
-	else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
-	{
-		 for( int i= 0; i< 3; i++ )
-            d_line_color[i]= Fixed16Div( 3*( triangle_in_color[i+8] * inv_vertex_z[2] - triangle_in_color[i+4] * inv_vertex_z[2] ), dx );
-	}
-	else if( lighting_mode == LIGHTING_FROM_LIGHTMAP || lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
-    {
-            d_line_tc[0+2]= Fixed16Div( Fixed16Mul( triangle_in_lightmap_tex_coord[0+4], inv_vertex_z[2] ) - Fixed16Mul( triangle_in_lightmap_tex_coord[0+2], inv_vertex_z[1] ), dx );
-			d_line_tc[0+3]= Fixed16Div( Fixed16Mul( triangle_in_lightmap_tex_coord[1+4], inv_vertex_z[2] ) - Fixed16Mul( triangle_in_lightmap_tex_coord[1+2], inv_vertex_z[1] ), dx );
-        
-    }//if use lightmaps
+		if( lighting_mode == LIGHTING_PER_VERTEX )
+			d_line_light= Fixed16Div( triangle_in_light[2] * inv_vertex_z[2] - triangle_in_light[1] * inv_vertex_z[1], dx );
+		else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
+		{
+			 for( int i= 0; i< 3; i++ )
+				d_line_color[i]= Fixed16Div( 3*( triangle_in_color[i+8] * inv_vertex_z[2] - triangle_in_color[i+4] * inv_vertex_z[2] ), dx );
+		}
+		else if( lighting_mode == LIGHTING_FROM_LIGHTMAP || lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
+		{
+				d_line_tc[0+2]= Fixed16Div( Fixed16Mul( triangle_in_lightmap_tex_coord[0+4], inv_vertex_z[2] ) - Fixed16Mul( triangle_in_lightmap_tex_coord[0+2], inv_vertex_z[1] ), dx );
+				d_line_tc[0+3]= Fixed16Div( Fixed16Mul( triangle_in_lightmap_tex_coord[1+4], inv_vertex_z[2] ) - Fixed16Mul( triangle_in_lightmap_tex_coord[1+2], inv_vertex_z[1] ), dx );
+	        
+		}//if use lightmaps
 
-	//shift invert z, becouse delta can be very short
-	d_line_inv_z= Fixed16Div( ( inv_vertex_z[2] - inv_vertex_z[1] )<< PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2, dx );
+		//shift invert z, becouse delta can be very short
+		d_line_inv_z= Fixed16Div( ( inv_vertex_z[2] - inv_vertex_z[1] )<< PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2, dx );
+	}//if dx not small
 }
 
 /*
@@ -1496,9 +1572,6 @@ void DrawTriangleUp()
     d_inv_z_left= Fixed16Div( ( inv_vertex_z[0] - inv_vertex_z[1] )<< PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2, dy );
     inv_z_left= ( inv_vertex_z[1] << PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 ) + Fixed16Mul( d_inv_z_left, ddy );
 
-
-	//CalculateLineGradients< color_mode, texture_mode, blending_mode, alpha_test_mode,
-	//	lighting_mode, lightmap_mode, additional_effect_mode, depth_test_mode, write_depth >();
 
     /*if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP 
 		|| texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP || texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER_MIPMAP )
@@ -1739,34 +1812,6 @@ coord
 color/tex_coord
 light/lightmap_coord
 */
-
-
-//UNFINISHED
-template<
-enum ColorMode color_mode,
-enum TextureMode texture_mode,
-enum BlendingMode blending_mode,
-enum AlphaTestMode alpha_test_mode,
-enum LightingMode lighting_mode,
-enum LightmapMode lightmap_mode,
-enum AdditionalEffectMode additional_lighting_mode,
-enum DepthTestMode depth_test_mode,
-bool write_depth >
-void DrawTriangleSpansFromBuffer( char* buff )
-{
-	int y_begin= FastIntClampToZero( triangle_in_vertex_xy[1] );
-	int y_end= FastIntMin( screen_size_x, triangle_in_vertex_xy[5] );
-	int y_middle= FastIntClampToZero( FastIntMin( screen_size_x-1, triangle_in_vertex_xy[3] ) );
-
-	for( int y= y_begin; y< y_middle; y++ )
-	{
-	}
-
-	for( int y= y_middle; y< y_end; y++ )
-	{
-	}
-
-}
 
 template<
 enum ColorMode color_mode,

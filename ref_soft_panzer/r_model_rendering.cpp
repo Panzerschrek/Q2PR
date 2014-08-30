@@ -162,7 +162,7 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t ca
 		if( (texinfo->flags&SURF_NODRAW) != 0 )
 				continue;
 
-		bool no_lightmap= (surf->flags&SURF_DRAWTURB)!= 0 || (surf->texinfo->flags&SURF_WARP)!= 0 ||  surf->samples == NULL;
+		bool no_lightmap= (surf->flags&SURF_DRAWTURB)!= 0 || surf->samples == NULL;
 		bool trans_surface= (texinfo->flags&(SURF_TRANS66|SURF_TRANS33)) != 0;
 		if( no_lightmap )
 		{
@@ -657,6 +657,9 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam
 	result_mat= entity_mat * *mat;
 	if( (ent->flags&RF_WEAPONMODEL) != 0 )
 	{
+		//make weapoon model larger
+		for( int i= 0; i< model->num_xyz; i++ )
+			current_model_vertices[i]*= 2.0f;
 		if( r_lefthand->value == 1 )
 		{
 			hand_mat.Identity();
@@ -700,37 +703,43 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam
 
 	if( model_visibility_type == ALIAS_MODEL_IN_FRUSTRUM )
 	{
+		for( m_Vec3* v= current_model_vertices, *v_end= current_model_vertices + model->num_xyz;
+			v< v_end; v++ )
+		{
+			*v= *v * result_mat;
+			float inv_z= 1.0f/ v->z;
+			v->z*= 65536.0f;
+			v->x= ( v->x * inv_z + 1.0f ) * width2_f;
+			v->y= ( v->y * inv_z + 1.0f ) * height2_f;
+		}
+#define  Z_MIN_SCALED float(PSR_MIN_ZMIN)
 		for( int t= 0; t< model->num_tris; t++, tris++ )
 		{
-			m_Vec3 coord[3];//screen space coord
-			for( int i= 0; i< 3; i++ )
-				coord[i]= current_model_vertices[ tris->index_xyz[i] ] * result_mat;
-			
-			if( coord[0].z < PSR_MIN_ZMIN_FLOAT || coord[1].z < PSR_MIN_ZMIN_FLOAT || coord[2].z < PSR_MIN_ZMIN_FLOAT )
+			if( current_model_vertices[ tris->index_xyz[0] ].z <= Z_MIN_SCALED ||
+				current_model_vertices[ tris->index_xyz[1] ].z <= Z_MIN_SCALED ||
+				current_model_vertices[ tris->index_xyz[2] ].z <= Z_MIN_SCALED )
 				continue;
 
-			for( int i= 0; i< 3; i++ )
-			{
-				float inv_z= 1.0f/ coord[i].z;
-				coord[i].x= ( coord[i].x * inv_z + 1.0f ) * width2_f;
-				coord[i].y= ( coord[i].y * inv_z + 1.0f ) * height2_f;
-			}
-
 			//bak face culling
-			float v[4]= { coord[2].x - coord[1].x, coord[2].y - coord[1].y, coord[1].x - coord[0].x, coord[1].y - coord[0].y };
+			float v[4]= {	current_model_vertices[ tris->index_xyz[2] ].x - current_model_vertices[ tris->index_xyz[1] ].x,
+							current_model_vertices[ tris->index_xyz[2] ].y - current_model_vertices[ tris->index_xyz[1] ].y,
+							current_model_vertices[ tris->index_xyz[1] ].x - current_model_vertices[ tris->index_xyz[0] ].x,
+							current_model_vertices[ tris->index_xyz[1] ].y - current_model_vertices[ tris->index_xyz[0] ].y };
 			if( v[0] * v[3]  - v[2] * v[1] < 1.0f )
 				continue;
 			
 			using namespace VertexProcessing;
-			triangle_in_vertex_xy[0]= fixed16_t(coord[0].x);
-			triangle_in_vertex_xy[1]= fixed16_t(coord[0].y);
-			triangle_in_vertex_xy[2]= fixed16_t(coord[1].x);
-			triangle_in_vertex_xy[3]= fixed16_t(coord[1].y);
-			triangle_in_vertex_xy[4]= fixed16_t(coord[2].x);
-			triangle_in_vertex_xy[5]= fixed16_t(coord[2].y);
-			triangle_in_vertex_z[0]= fixed16_t(coord[0].z*65536.0f);
-			triangle_in_vertex_z[1]= fixed16_t(coord[1].z*65536.0f);
-			triangle_in_vertex_z[2]= fixed16_t(coord[2].z*65536.0f);
+
+			triangle_in_vertex_xy[0]= fixed16_t(current_model_vertices[ tris->index_xyz[0] ].x);
+			triangle_in_vertex_xy[1]= fixed16_t(current_model_vertices[ tris->index_xyz[0] ].y);
+			triangle_in_vertex_xy[2]= fixed16_t(current_model_vertices[ tris->index_xyz[1] ].x);
+			triangle_in_vertex_xy[3]= fixed16_t(current_model_vertices[ tris->index_xyz[1] ].y);
+			triangle_in_vertex_xy[4]= fixed16_t(current_model_vertices[ tris->index_xyz[2] ].x);
+			triangle_in_vertex_xy[5]= fixed16_t(current_model_vertices[ tris->index_xyz[2] ].y);
+			triangle_in_vertex_z[0]= fixed16_t(current_model_vertices[ tris->index_xyz[0] ].z);
+			triangle_in_vertex_z[1]= fixed16_t(current_model_vertices[ tris->index_xyz[1] ].z);
+			triangle_in_vertex_z[2]= fixed16_t(current_model_vertices[ tris->index_xyz[2] ].z);
+
 			triangle_in_tex_coord[0]= st[tris->index_st[0]].s<<16;
 			triangle_in_tex_coord[1]= tex_y_shift -(st[tris->index_st[0]].t<<16);
 			triangle_in_tex_coord[2]= st[tris->index_st[1]].s<<16;

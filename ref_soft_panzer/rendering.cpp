@@ -241,9 +241,9 @@ extern "C" void PR_SwapCommandBuffers()
 {
 	R_SwapLightmapBuffers();
 
-	char statistic_str[128];
-	sprintf( statistic_str, "command buffer size: %dkb\nparticles: %d", command_buffer.current_pos>>10, r_newrefdef.num_particles );
-	DrawCharString( 8, 16, statistic_str );
+	//char statistic_str[128];
+	//sprintf( statistic_str, "command buffer size: %dkb\nparticles: %d", command_buffer.current_pos>>10, r_newrefdef.num_particles );
+	//DrawCharString( 8, 16, statistic_str );
 
 	//draw chars
 	command_buffer.current_pos+= ComIn_AddUserDefinedFunc( 
@@ -486,7 +486,7 @@ void CalculateAndShowFPS()
 
 
 	char fps_str[128];
-	sprintf( fps_str, "fps: %d\n%dms\ntotal: %2.3f\n",
+	sprintf( fps_str, "fps: %d\n%dms\ntotal: %3.2f\n",
 		fps_calc.last_fps, dt * 1000 / CLOCKS_PER_SEC,
 		(current_time == fps_calc.start_time) ? 60 : (float(CLOCKS_PER_SEC*fps_calc.total_frames)/float(current_time-fps_calc.start_time))
 		);
@@ -684,17 +684,6 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 {
 	r_newrefdef= *fd;
 	r_framecount++;
-	/*if( r_newrefdef.num_dlights < 32 )
-	{
-		dlight_t* light= r_newrefdef.dlights + r_newrefdef.num_dlights;
-		VectorCopy( fd->vieworg, light->origin );
-		light->origin[0]+= 128.0f;
-		light->intensity= 256.0f;
-		light->color[0]= 0.3f;
-		light->color[1]= 0.5f;
-		light->color[2]= 1.0f;
-		r_newrefdef.num_dlights++;
-	}*/
 
 	InitPlayerFlashlight();
 	SetWorldFrame( int(r_newrefdef.time*2.0f) );

@@ -257,11 +257,11 @@ int clip_plane_count;
 int tmp_vertices_stack_pos;
 
 
-int GetSurfaceMipLevel( msurface_t* surf )
+int GetSurfaceMipLevel( msurface_t* surf, int vert_count )
 {
 	float dst= 0;
 	int front_vertex_count= 0;
-	for( int i= 0; i< surf->numedges; i++ )
+	for( int i= 0; i< vert_count; i++ )
 	{
 		if( surface_final_vertices[i].z > PSR_MIN_ZMIN_FLOAT )
 		{
@@ -447,10 +447,10 @@ int DrawWorldSurface( msurface_t* surf, triangle_draw_func_t near_draw_func, tri
 {
 	int triangle_count= 0;
 
-	int tc_u[max_poly_vertices];
-	int tc_v[max_poly_vertices];
-	int lightmap_tc_u[max_poly_vertices];
-	int lightmap_tc_v[max_poly_vertices];
+	fixed16_t tc_u[max_poly_vertices];
+	fixed16_t tc_v[max_poly_vertices];
+	fixed16_t lightmap_tc_u[max_poly_vertices];
+	fixed16_t lightmap_tc_v[max_poly_vertices];
 	if( surf->numedges > max_poly_vertices )
 		surf->numedges= max_poly_vertices;
 	//get vertices
@@ -467,24 +467,27 @@ int DrawWorldSurface( msurface_t* surf, triangle_draw_func_t near_draw_func, tri
 		goto put_draw_command;
 	for(int e= 0; e< final_vertex_count; e++ )
 	{
-		tc_u[e]= int( (DotProduct( surface_vertices[e]->position, surf->texinfo->vecs[0] ) + surf->texinfo->vecs[0][3])*65536.0f );
-		tc_v[e]= int( (DotProduct( surface_vertices[e]->position, surf->texinfo->vecs[1] ) + surf->texinfo->vecs[1][3])*65536.0f );
+		tc_u[e]= fixed16_t( (DotProduct( surface_vertices[e]->position, surf->texinfo->vecs[0] ) + surf->texinfo->vecs[0][3])*65536.0f );
+		tc_v[e]= fixed16_t( (DotProduct( surface_vertices[e]->position, surf->texinfo->vecs[1] ) + surf->texinfo->vecs[1][3])*65536.0f );
 		lightmap_tc_u[e]= (tc_u[e] - (surf->texturemins[0]<<16) )>>4;
 		lightmap_tc_v[e]= (tc_v[e] - (surf->texturemins[1]<<16) )>>4;
 
-		((mvertex_t*)surface_final_vertices)[e]= *(surface_vertices[e]);
-		surface_final_vertices[e]= surface_final_vertices[e] * view_matrix;
+		//((mvertex_t*)surface_final_vertices)[e]= *(surface_vertices[e]);
+		surface_final_vertices[e]= *((m_Vec3*)surface_vertices[e]->position) * view_matrix;
+		float inv_z= 1.0f / surface_final_vertices[e].z;
+		surface_final_vertices[e].x= (surface_final_vertices[e].x * inv_z + 1.0f ) * width2_f;
+		surface_final_vertices[e].y= (surface_final_vertices[e].y * inv_z + 1.0f ) * height2_f;
 	}
 	//texture coord morfing
-	if( (surf->texinfo->flags&SURF_FLOWING) != 0 )
+	if( (surf->flags&SURF_FLOW) != 0 )
 	{
-		int tc_delta= ( int( -0.5f * r_newrefdef.time * float(texinfo->image->width) ) & (texinfo->image->width*4-1) )<<16;
+		fixed16_t tc_delta= ( int( -0.5f * r_newrefdef.time * float(texinfo->image->width) ) & (texinfo->image->width*4-1) )<<16;
 		for(int e= 0; e< final_vertex_count; e++ )
 			tc_u[e]+= tc_delta;
 	}
 
 	//select texture and mip level
-	int mip_level= GetSurfaceMipLevel( surf );
+	int mip_level= GetSurfaceMipLevel( surf, final_vertex_count );
 	Texture* tex= R_FindTexture( texinfo->image );
 	if( mip_level >= MIPLEVELS ) mip_level= MIPLEVELS-1;
 	command_buffer.current_pos += 
@@ -507,52 +510,40 @@ put_draw_command:
 	buff+= sizeof(DrawTriangleCall);
 	if( final_vertex_count == 0 )
 		return 0;
+	for( int v= 0; v< final_vertex_count; v++ )
+	{
+		tc_u[v]= (tc_u[v]>>mip_level) + tex_coord_shift;
+		tc_v[v]= (tc_v[v]>>mip_level) + tex_coord_shift;
+		surface_final_vertices[v].z*= 65536.0f;//prepare to convertion to fixd16_t format
+	}
+	const float z_min_scaled= PSR_MIN_ZMIN_FLOAT * 65536.0f;
 	for( int t= 0; t< final_vertex_count-2; t++ )
 	{
-		m_Vec3 final_vertices[3];
-		final_vertices[0]= surface_final_vertices[0  ];
-		final_vertices[1]= surface_final_vertices[t+1];
-		final_vertices[2]= surface_final_vertices[t+2];
-		if( final_vertices[0].z <= PSR_MIN_ZMIN_FLOAT || final_vertices[1].z <= PSR_MIN_ZMIN_FLOAT || final_vertices[2].z <= PSR_MIN_ZMIN_FLOAT )
+		if( surface_final_vertices[0].z <= z_min_scaled || surface_final_vertices[t+1].z <= z_min_scaled || surface_final_vertices[t+2].z <= z_min_scaled )
 			continue;
-		if( final_vertices[0].z > 128.0f || final_vertices[1].z > 128.0f || final_vertices[2].z > 128.0f )
-			continue;
+		using namespace VertexProcessing;
+		triangle_in_tex_coord[0]= tc_u[0];;
+		triangle_in_tex_coord[1]= tc_v[0];
+		triangle_in_tex_coord[2]= tc_u[t+1];
+		triangle_in_tex_coord[3]= tc_v[t+1];
+		triangle_in_tex_coord[4]= tc_u[t+2];
+		triangle_in_tex_coord[5]= tc_v[t+2];
+		triangle_in_lightmap_tex_coord[0]= lightmap_tc_u[0];
+		triangle_in_lightmap_tex_coord[1]= lightmap_tc_v[0];
+		triangle_in_lightmap_tex_coord[2]= lightmap_tc_u[t+1];
+		triangle_in_lightmap_tex_coord[3]= lightmap_tc_v[t+1];
+		triangle_in_lightmap_tex_coord[4]= lightmap_tc_u[t+2];
+		triangle_in_lightmap_tex_coord[5]= lightmap_tc_v[t+2];
 
-		for( int j= 0; j< 3; j++ )
-		{
-			float inv_z= 1.0f / final_vertices[j].z;
-			final_vertices[j].x= ( final_vertices[j].x * inv_z + 1.0f ) * width2_f;
-			final_vertices[j].y= ( final_vertices[j].y * inv_z + 1.0f ) * height2_f;
-		}
-		//temporary, discard triangles outside the screen
-		/*if( final_vertices[0].x <= 0.0f || final_vertices[0].x >= width_f || final_vertices[0].y <= 0.0f || final_vertices[0].y >= height_f )
-			continue;
-		if( final_vertices[1].x <= 0.0f || final_vertices[1].x >= width_f || final_vertices[1].y <= 0.0f || final_vertices[1].y >= height_f )
-			continue;
-		if( final_vertices[2].x <= 0.0f || final_vertices[2].x >= width_f || final_vertices[2].y <= 0.0f || final_vertices[2].y >= height_f )
-			continue;*/
-		VertexProcessing::triangle_in_tex_coord[0]= (tc_u[0]>>mip_level) + tex_coord_shift;
-		VertexProcessing::triangle_in_tex_coord[1]= (tc_v[0]>>mip_level) + tex_coord_shift;
-		VertexProcessing::triangle_in_tex_coord[2]= (tc_u[t+1]>>mip_level) + tex_coord_shift;
-		VertexProcessing::triangle_in_tex_coord[3]= (tc_v[t+1]>>mip_level) + tex_coord_shift;
-		VertexProcessing::triangle_in_tex_coord[4]= (tc_u[t+2]>>mip_level) + tex_coord_shift;
-		VertexProcessing::triangle_in_tex_coord[5]= (tc_v[t+2]>>mip_level) + tex_coord_shift;
-		VertexProcessing::triangle_in_lightmap_tex_coord[0]= lightmap_tc_u[0];
-		VertexProcessing::triangle_in_lightmap_tex_coord[1]= lightmap_tc_v[0];
-		VertexProcessing::triangle_in_lightmap_tex_coord[2]= lightmap_tc_u[t+1];
-		VertexProcessing::triangle_in_lightmap_tex_coord[3]= lightmap_tc_v[t+1];
-		VertexProcessing::triangle_in_lightmap_tex_coord[4]= lightmap_tc_u[t+2];
-		VertexProcessing::triangle_in_lightmap_tex_coord[5]= lightmap_tc_v[t+2];
-
-		VertexProcessing::triangle_in_vertex_xy[0]= fixed16_t(final_vertices[0].x);
-		VertexProcessing::triangle_in_vertex_xy[1]= fixed16_t(final_vertices[0].y);
-		VertexProcessing::triangle_in_vertex_xy[2]= fixed16_t(final_vertices[1].x);
-		VertexProcessing::triangle_in_vertex_xy[3]= fixed16_t(final_vertices[1].y);
-		VertexProcessing::triangle_in_vertex_xy[4]= fixed16_t(final_vertices[2].x);
-		VertexProcessing::triangle_in_vertex_xy[5]= fixed16_t(final_vertices[2].y);
-		VertexProcessing::triangle_in_vertex_z[0]= fixed16_t(final_vertices[0].z*65536.0f);
-		VertexProcessing::triangle_in_vertex_z[1]= fixed16_t(final_vertices[1].z*65536.0f);
-		VertexProcessing::triangle_in_vertex_z[2]= fixed16_t(final_vertices[2].z*65536.0f);
+		triangle_in_vertex_xy[0]= fixed16_t(surface_final_vertices[0].x);
+		triangle_in_vertex_xy[1]= fixed16_t(surface_final_vertices[0].y);
+		triangle_in_vertex_xy[2]= fixed16_t(surface_final_vertices[t+1].x);
+		triangle_in_vertex_xy[3]= fixed16_t(surface_final_vertices[t+1].y);
+		triangle_in_vertex_xy[4]= fixed16_t(surface_final_vertices[t+2].x);
+		triangle_in_vertex_xy[5]= fixed16_t(surface_final_vertices[t+2].y);
+		triangle_in_vertex_z[0]= fixed16_t(surface_final_vertices[0].z);
+		triangle_in_vertex_z[1]= fixed16_t(surface_final_vertices[t+1].z);
+		triangle_in_vertex_z[2]= fixed16_t(surface_final_vertices[t+2].z);
 
 		int draw_to_buffer_result;
 		if(no_lightmaps)
@@ -600,7 +591,7 @@ void DrawWorldAlphaSurfaces()
 			fr--;
 		}
 
-		bool no_lightmaps= (surf->flags&SURF_DRAWTURB)!= 0 || (surf->texinfo->flags&SURF_WARP)!= 0 || surf->samples == NULL;
+		bool no_lightmaps= (surf->flags&SURF_DRAWTURB)!= 0 || surf->samples == NULL;
 		if(!no_lightmaps)
 		{
 			command_buffer.current_pos += 
@@ -719,7 +710,7 @@ void DrawWorldSurfaces()
 	msurface_t* surf= world_surfaces_chain.first_surface;
 	while( face_count < world_surfaces_chain.surf_count )
 	{
-		bool no_lightmaps= (surf->flags&SURF_DRAWTURB)!= 0 || (surf->texinfo->flags&SURF_WARP)!= 0 || surf->samples == NULL;
+		bool no_lightmaps= (surf->flags&SURF_DRAWTURB)!= 0 || surf->samples == NULL;
 		if(!no_lightmaps)
 		{
 			command_buffer.current_pos += 

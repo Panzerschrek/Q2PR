@@ -108,6 +108,24 @@ inline fixed16_t Fixed16Invert( fixed16_t b )
 #endif
 }
 
+//returns 1 / (b/PSR_INV_DEPTH_DELTA_MULTIPLER)
+//need for calcualtion of final pixel z
+inline fixed16_t Fixed16DepthInvert( fixed16_t b )
+{
+#ifdef PSR_MASM32
+	__asm
+	{
+		xor eax, eax
+		mov edx, PSR_INV_DEPTH_DELTA_MULTIPLER
+		idiv b//result in eax
+	}
+#else
+	//long long int y(0x100000000L);
+	long long int y(4294967296LL);
+	return int( y / b );
+#endif
+}
+
 inline int Fixed16MulResultToInt( fixed16_t a, fixed16_t b )
 {
 	#ifdef PSR_MASM32
