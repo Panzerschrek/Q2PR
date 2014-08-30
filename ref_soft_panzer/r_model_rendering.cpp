@@ -108,7 +108,7 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t ca
 	int i;
 	msurface_t* surf;
 	
-	if( model->firstmodelsurface == 0)//HACK
+	if( model->firstmodelsurface == 0 || model->nummodelsurfaces == 0 )//HACK
 		return;
 
 	vec3_t cam_pos_model_space;
@@ -326,8 +326,8 @@ int ClipModelTriangle( dtriangle_t* triangle, dstvert_t* st )//returns number of
 		current_model_polygon_vertices[i].position[0]= v->x;
 		current_model_polygon_vertices[i].position[1]= v->y;
 		current_model_polygon_vertices[i].position[2]= v->z;
-		current_model_polygon_vertices[i].st[0]= st[ triangle->index_st[i] ].s;
-		current_model_polygon_vertices[i].st[1]= st[ triangle->index_st[i] ].t;
+		current_model_polygon_vertices[i].st[0]= float(st[ triangle->index_st[i] ].s) * 65536.0f;
+		current_model_polygon_vertices[i].st[1]= float(st[ triangle->index_st[i] ].t) * 65536.0f;//prepare to convertion to fixed16_t format
 
 		current_model_polygon_vertices[i].light[0]= float(current_model_vertex_lights[ triangle->index_xyz[i] ].colored_light[0] );
 		current_model_polygon_vertices[i].light[1]= float(current_model_vertex_lights[ triangle->index_xyz[i] ].colored_light[1] );
@@ -470,16 +470,17 @@ void CalculateModelLights( entity_t* ent, m_Mat4* light_transform_matrix, m_Mat4
 	{
 		float ambient_light[4];
 		R_LightPoint ( ent->origin, ambient_light);
-		unsigned char final_ambient_light[4];
+		float final_ambient_light[3];
 
-		unsigned char min_light= ((ent->flags&RF_MINLIGHT) != 0) ? 16 : 8;
-		final_ambient_light[0]= (unsigned char)(ambient_light[0] * 255.0f);
+
+		float min_light= ((ent->flags&RF_MINLIGHT) != 0) ? 16.0f : 8.0f;
+		final_ambient_light[0]= ambient_light[0] * 255.0f;
 		if( final_ambient_light[0] < min_light ) final_ambient_light[0]= min_light;
-		final_ambient_light[1]= (unsigned char)(ambient_light[1] * 255.0f);
+		final_ambient_light[1]= ambient_light[1] * 255.0f;
 		if( final_ambient_light[1] < min_light ) final_ambient_light[1]= min_light;
-		final_ambient_light[2]= (unsigned char)(ambient_light[2] * 255.0f);
+		final_ambient_light[2]= ambient_light[2] * 255.0f;
 		if( final_ambient_light[2] < min_light ) final_ambient_light[2]= min_light;
-		
+
 		const float light_scaler= 0.125f * 255.0f;
 
 		for( int i= 0; i< model->num_xyz; i++ )
@@ -489,9 +490,20 @@ void CalculateModelLights( entity_t* ent, m_Mat4* light_transform_matrix, m_Mat4
 							r_avertexnormals[frame->verts[i].lightnormalindex][2] );
 
 			float light_scale_k= ( normal.z + 2.0f ) * 0.333f;
-			current_model_vertex_lights[i].colored_light[0]= (unsigned char)(light_scale_k * final_ambient_light[0]);
+			float l;
+			l= light_scale_k * final_ambient_light[0];
+			if( l > 255.0f ) l= 255.0f;
+				current_model_vertex_lights[i].colored_light[0]= (unsigned char)l;
+			l= light_scale_k * final_ambient_light[1];
+			if( l > 255.0f ) l= 255.0f;
+				current_model_vertex_lights[i].colored_light[1]= (unsigned char)l;
+			l= light_scale_k * final_ambient_light[2];
+			if( l > 255.0f ) l= 255.0f;
+				current_model_vertex_lights[i].colored_light[2]= (unsigned char)l;
+
+			/*current_model_vertex_lights[i].colored_light[0]= (unsigned char)(light_scale_k * final_ambient_light[0]);
 			current_model_vertex_lights[i].colored_light[1]= (unsigned char)(light_scale_k * final_ambient_light[1]);
-			current_model_vertex_lights[i].colored_light[2]= (unsigned char)(light_scale_k * final_ambient_light[2]);
+			current_model_vertex_lights[i].colored_light[2]= (unsigned char)(light_scale_k * final_ambient_light[2]);*/
 		
 			for( int l= 0; l< model_dlight_num; l++ )
 			{
@@ -783,6 +795,7 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam
 					float inv_z= 1.0f/ coord[i].z;
 					coord[i].x= ( coord[i].x * inv_z + 1.0f ) * width2_f;
 					coord[i].y= ( coord[i].y * inv_z + 1.0f ) * height2_f;
+					coord[i].z*= 65536.0f;
 				}
 				//bak face culling
 				float v[4]= { coord[2].x - coord[1].x, coord[2].y - coord[1].y, coord[1].x - coord[0].x, coord[1].y - coord[0].y };
@@ -796,27 +809,27 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam
 				triangle_in_vertex_xy[3]= fixed16_t(coord[1].y);
 				triangle_in_vertex_xy[4]= fixed16_t(coord[2].x);
 				triangle_in_vertex_xy[5]= fixed16_t(coord[2].y);
-				triangle_in_vertex_z[0]= fixed16_t(coord[0].z*65536.0f);
-				triangle_in_vertex_z[1]= fixed16_t(coord[1].z*65536.0f);
-				triangle_in_vertex_z[2]= fixed16_t(coord[2].z*65536.0f);
-				triangle_in_tex_coord[0]= fixed16_t(current_model_polygon[0]->st[0]*65536.0f);
-				triangle_in_tex_coord[1]= tex_y_shift - fixed16_t(current_model_polygon[0]->st[1]*65536.0f);
-				triangle_in_tex_coord[2]= fixed16_t(current_model_polygon[t+1]->st[0]*65536.0f);
-				triangle_in_tex_coord[3]= tex_y_shift - fixed16_t(current_model_polygon[t+1]->st[1]*65536.0f);
-				triangle_in_tex_coord[4]= fixed16_t(current_model_polygon[t+2]->st[0]*65536.0f);
-				triangle_in_tex_coord[5]= tex_y_shift - fixed16_t(current_model_polygon[t+2]->st[1]*65536.0f);
-				triangle_in_color[0 ]= (unsigned char)( current_model_polygon[0]->light[0] );
-				triangle_in_color[1 ]= (unsigned char)( current_model_polygon[0]->light[1] );
-				triangle_in_color[2 ]= (unsigned char)( current_model_polygon[0]->light[2] );
-				triangle_in_color[4 ]= (unsigned char)( current_model_polygon[t+1]->light[0] );
-				triangle_in_color[5 ]= (unsigned char)( current_model_polygon[t+1]->light[1] );
-				triangle_in_color[6 ]= (unsigned char)( current_model_polygon[t+1]->light[2] );
-				triangle_in_color[8 ]= (unsigned char)( current_model_polygon[t+2]->light[0] );
-				triangle_in_color[9 ]= (unsigned char)( current_model_polygon[t+2]->light[1] );
-				triangle_in_color[10]= (unsigned char)( current_model_polygon[t+2]->light[2] );
-				/*triangle_in_color[0 ]= triangle_in_color[1 ]= triangle_in_color[2 ]=
-				triangle_in_color[4 ]= triangle_in_color[5 ]= triangle_in_color[6 ]=
-				triangle_in_color[8 ]= triangle_in_color[9 ]= triangle_in_color[10]= 255;*/
+				triangle_in_vertex_z[0]= fixed16_t(coord[0].z);
+				triangle_in_vertex_z[1]= fixed16_t(coord[1].z);
+				triangle_in_vertex_z[2]= fixed16_t(coord[2].z);
+				triangle_in_tex_coord[0]= fixed16_t(current_model_polygon[0]->st[0]);
+				triangle_in_tex_coord[1]= tex_y_shift - fixed16_t(current_model_polygon[0]->st[1]);
+				triangle_in_tex_coord[2]= fixed16_t(current_model_polygon[t+1]->st[0]);
+				triangle_in_tex_coord[3]= tex_y_shift - fixed16_t(current_model_polygon[t+1]->st[1]);
+				triangle_in_tex_coord[4]= fixed16_t(current_model_polygon[t+2]->st[0]);
+				triangle_in_tex_coord[5]= tex_y_shift - fixed16_t(current_model_polygon[t+2]->st[1]);
+				if( !is_fullbright )
+				{
+					triangle_in_color[0 ]= (unsigned char)( current_model_polygon[0]->light[0] );
+					triangle_in_color[1 ]= (unsigned char)( current_model_polygon[0]->light[1] );
+					triangle_in_color[2 ]= (unsigned char)( current_model_polygon[0]->light[2] );
+					triangle_in_color[4 ]= (unsigned char)( current_model_polygon[t+1]->light[0] );
+					triangle_in_color[5 ]= (unsigned char)( current_model_polygon[t+1]->light[1] );
+					triangle_in_color[6 ]= (unsigned char)( current_model_polygon[t+1]->light[2] );
+					triangle_in_color[8 ]= (unsigned char)( current_model_polygon[t+2]->light[0] );
+					triangle_in_color[9 ]= (unsigned char)( current_model_polygon[t+2]->light[1] );
+					triangle_in_color[10]= (unsigned char)( current_model_polygon[t+2]->light[2] );	
+				}
 
 				int draw_result;
 				if(is_fullbright)

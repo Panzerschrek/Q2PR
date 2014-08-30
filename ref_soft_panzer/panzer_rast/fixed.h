@@ -102,7 +102,6 @@ inline fixed16_t Fixed16Invert( fixed16_t b )
 		idiv b//result in eax
 	}
 #else
-	//long long int y(0x100000000L);
 	long long int y(4294967296LL);
 	return int( y / b );
 #endif
@@ -120,8 +119,7 @@ inline fixed16_t Fixed16DepthInvert( fixed16_t b )
 		idiv b//result in eax
 	}
 #else
-	//long long int y(0x100000000L);
-	long long int y(4294967296LL);
+	long long int y(PSR_INV_DEPTH_DELTA_MULTIPLER*4294967296LL);
 	return int( y / b );
 #endif
 }

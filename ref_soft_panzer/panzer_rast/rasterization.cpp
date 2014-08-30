@@ -683,12 +683,14 @@ void DrawSprite( int x0, int y0, int x1, int y1, fixed16_t sprite_in_depth )
     int y_end= FastIntMin( y1, screen_size_y );
     fixed16_t u, v, du, dv;
     int lod;
-    if( x1 != x0 )
-        du= ( current_texture_size_x << 16 ) / ( x1 - x0 );
-    if( y1 != y0 )
-        dv= ( current_texture_size_y << 16 ) / ( y1 - y0 );
-
-    v= ( y - y0 ) * dv;//Fixed16Mul( ( y - y0 )<<16, * dv );
+	if( texture_mode != TEXTURE_NONE )
+	{
+		if( x1 != x0 )
+			du= ( current_texture_size_x << 16 ) / ( x1 - x0 );
+		if( y1 != y0 )
+			dv= ( current_texture_size_y << 16 ) / ( y1 - y0 );
+		v= ( y - y0 ) * dv;
+	}
 
     if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP 
 		|| texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER_MIPMAP ||  texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP )
@@ -702,54 +704,45 @@ void DrawSprite( int x0, int y0, int x1, int y1, fixed16_t sprite_in_depth )
 	if( sprite_in_depth > PSR_MIN_ZMIN )
 		depth_z=  Fixed16Div( PSR_MIN_ZMIN, sprite_in_depth);
 	else
-		depth_z= 0;
+		depth_z= 65535;
 
-    for( ; y< y_end; y++, v+=dv )
+    for( ; y< y_end; y++ )
     {
         pixels= screen_buffer +(( x_begin + y * screen_size_x )<<2);
         depth_p= depth_buffer + ( x_begin + y * screen_size_x );
-        u= ( x_begin - x0 ) * du;
-        for( int x= x_begin; x< x_end; x++, pixels+=4, depth_p++, u+=du  )
+		if( texture_mode != TEXTURE_NONE )
+			u= ( x_begin - x0 ) * du;
+        for( int x= x_begin; x< x_end; x++, pixels+=4, depth_p++ )
         {
             if( depth_test_mode != DEPTH_TEST_NONE )
             {
                 if( depth_test_mode == DEPTH_TEST_LESS )
                     if( depth_z >= *depth_p )
-                        continue;
+                        goto next_pixel;
                 if( depth_test_mode == DEPTH_TEST_GREATER )
                     if( depth_z <= *depth_p )
-                        continue;
+                        goto next_pixel;
                 if( depth_test_mode == DEPTH_TEST_EQUAL )
                     if( depth_z != *depth_p )
-                        continue;
+                        goto next_pixel;
                 if( depth_test_mode == DEPTH_TEST_NOT_EQUAL )
                     if( depth_z == *depth_p )
-                        continue;
+                        goto next_pixel;
             }
             if( texture_mode == TEXTURE_NONE )
-            {
-               /* color[0]= constant_color[0];
-                color[1]= constant_color[1];
-                color[2]= constant_color[2];
-                color[3]= constant_color[3];*/
 				Byte4Copy( color, constant_color );
-            }
             else if( texture_mode == TEXTURE_NEAREST )
                 TexelFetchNearestNoWarp( u>>16, v>>16, color );
             else if( texture_mode == TEXTURE_LINEAR )
                 TexelFetchLinear( u, v, color );
-            else if( texture_mode == TEXTURE_NEAREST_MIPMAP )
-                TexelFetchNearestMipmapNoWarp( u>>16, v>>16, lod, color );
+            //else if( texture_mode == TEXTURE_NEAREST_MIPMAP )
+            //    TexelFetchNearestMipmapNoWarp( u>>16, v>>16, lod, color );
             else if( texture_mode == TEXTURE_FAKE_FILTER )
             {
-                int xx= ((y^x)&1)<<15;
-                u+=xx;
-                v+=xx;
-                TexelFetchNearest( u>>16, v>>16, color );
-                u-=xx;
-                v-=xx;
+               	int ind= (x&1)|((y&1)<<1);
+                TexelFetchNearestNoWarp( (u+dithering_shift_table[ind+1])>>16, (v+dithering_shift_table[ind])>>16, color );
             }
-            else if( texture_mode == TEXTURE_FAKE_FILTER_MIPMAP )
+            /*else if( texture_mode == TEXTURE_FAKE_FILTER_MIPMAP )
             {
                 int xx= ((y^x)&1)<<15;
                 u+=xx;
@@ -757,7 +750,7 @@ void DrawSprite( int x0, int y0, int x1, int y1, fixed16_t sprite_in_depth )
                 TexelFetchNearestMipmap( u>>16, v>>16, lod, color );
                 u-=xx;
                 v-=xx;
-            }
+            }*/
             else if( texture_mode == TEXTURE_RGBS_LINEAR )
                 TexelFetchRGBSLinear( u, v, color );
 			//Plaettized textures
@@ -767,14 +760,10 @@ void DrawSprite( int x0, int y0, int x1, int y1, fixed16_t sprite_in_depth )
 				TexelFetchLinearPlaettized( u, v, color );
 			else if( texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER )
             {
-                int xx= ((y^x)&1)<<15;
-                u+=xx;
-                v+=xx;
-                TexelFetchNearestPlaettized( u>>16, v>>16, color );
-                u-=xx;
-                v-=xx;
+				int ind= (x&1)|((y&1)<<1);
+                TexelFetchNearestPlaettized( (u+dithering_shift_table[ind+1])>>16, (v+dithering_shift_table[ind])>>16, color );
             }
-			else if( texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP )
+			/*else if( texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP )
                 TexelFetchNearestMipmapPlaettized( u>>16, v>>16, lod, color );
 			else if( texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER_MIPMAP )
             {
@@ -784,29 +773,29 @@ void DrawSprite( int x0, int y0, int x1, int y1, fixed16_t sprite_in_depth )
                 TexelFetchNearestMipmapPlaettized( u>>16, v>>16, lod, color );
                 u-=xx;
                 v-=xx;
-            }
+            }*/
 
 
             if( alpha_test_mode != ALPHA_TEST_NONE )
             {
                 if( alpha_test_mode == ALPHA_TEST_LESS )
                     if( color[3] > constant_alpha )
-                        continue;
+                        goto next_pixel;
                 if( alpha_test_mode == ALPHA_TEST_GREATER )
                     if( color[3] < constant_alpha )
-                        continue;
+                        goto next_pixel;
                 if( alpha_test_mode == ALPHA_TEST_EQUAL )
                     if( color[3] != constant_alpha )
-                        continue;
+                        goto next_pixel;
                 if( alpha_test_mode == ALPHA_TEST_NOT_EQUAL )
                     if( color[3] == constant_alpha )
-                        continue;
+                        goto next_pixel;
 				if( alpha_test_mode == ALPHA_TEST_DISCARD_LESS_HALF )
 					if( color[3] < 128 )
-						continue;
+						goto next_pixel;
 				if( alpha_test_mode == ALPHA_TEST_DISCARD_GREATER_HALF )
 					if( color[3] > 128 )
-						continue;
+						goto next_pixel;
             }// if alpha test
 
             if( lighting_mode != LIGHTING_NONE )
@@ -838,10 +827,7 @@ void DrawSprite( int x0, int y0, int x1, int y1, fixed16_t sprite_in_depth )
                 {
                     int z= (x^y)&1;
                     if( z )
-                        continue;//discard
-                    /*pixels[0]= color[0];
-                    pixels[1]= color[1];
-                    pixels[2]= color[2];*/
+                        goto next_pixel;//discard
                     Byte4Copy( pixels, color );
                 }
                 else if( blending_mode == BLENDING_ADD )
@@ -864,15 +850,17 @@ void DrawSprite( int x0, int y0, int x1, int y1, fixed16_t sprite_in_depth )
                 }
             }// if is blending
             else
-            {
-                /*pixels[0]= color[0];
-                pixels[1]= color[1];
-                pixels[2]= color[2];*/
                 Byte4Copy( pixels, color );
-            }
             if( write_depth )
                 *depth_p= depth_z;
+
+next_pixel:
+			if( texture_mode != TEXTURE_NONE )
+			u+= du;
         }//x
+
+		if( texture_mode != TEXTURE_NONE )
+			v+= dv;
     }//y
 
 }//DrawSprite

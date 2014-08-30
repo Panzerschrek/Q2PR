@@ -171,37 +171,125 @@ void R_LightInit()
 
 
 
-void GenerateLightmapColored( unsigned char* out, msurface_t* surf, int lightstyle )
+void GenerateLightmapColored( unsigned char* out, msurface_t* surf )
 {
 	int size_x, size_y;
 	size_x= (surf->extents[0]>>4) + 1;
 	size_y= (surf->extents[1]>>4) + 1;
 	int ds= 4 * size_x * size_y;
-	memcpy( out, surf->samples + lightstyle*ds, ds );
+	if( surf->styles[1] == 255 )
+	{
+		memcpy( out, surf->samples, ds );
+		return;
+	}
+	int samp= 0;
+	for( int i= 0; i< ds; i+=4 )
+			out[i]= out[i+1]= out[i+2]= 0;
+	while( samp < MAXLIGHTMAPS && surf->styles[samp] != 255 )
+	{
+		int scale_values[3]= {
+			int(r_newrefdef.lightstyles[ surf->styles[samp] ].rgb[0] * 256.0f),
+			int(r_newrefdef.lightstyles[ surf->styles[samp] ].rgb[1] * 256.0f),
+			int(r_newrefdef.lightstyles[ surf->styles[samp] ].rgb[2] * 256.0f) };
+		//stupid gamex86.dll can send negative values
+		if( scale_values[0] < 0 ) scale_values[0]= 0;
+		if( scale_values[1] < 0 ) scale_values[1]= 0;
+		if( scale_values[2] < 0 ) scale_values[2]= 0;
+		ColorIntSwap( scale_values );
+		unsigned char* in= surf->samples + ds*samp;
+		for( int i= 0; i< ds; i+=4 )
+		{
+			int c;
+			c= ((in[i  ] * scale_values[0])>>8) + out[i  ];
+			if( c > 255 ) c= 255; out[i  ]= c;
+			c= ((in[i+1] * scale_values[1])>>8) + out[i+1];
+			if( c > 255 ) c= 255; out[i+1]= c;
+			c= ((in[i+2] * scale_values[2])>>8) + out[i+2];
+			if( c > 255 ) c= 255; out[i+2]= c;
+		}
+		samp++;
+	}
 }
-void GenerateLightmapLinear( unsigned char* out, msurface_t* surf, int lightstyle )
+void GenerateLightmapLinear( unsigned char* out, msurface_t* surf )
 {
 	int size_x, size_y;
 	size_x= (surf->extents[0]>>4) + 1;
 	size_y= (surf->extents[1]>>4) + 1;
 	int ds= size_x * size_y;
-	memcpy( out, surf->samples + lightstyle*ds, ds );
+	if( surf->styles[1] == 255 )
+	{
+		memcpy( out, surf->samples, ds );
+		return;
+	}
+
+	int samp= 0;
+	for( int i= 0; i< ds; i++ )
+			out[i]= 0;
+	while( samp < MAXLIGHTMAPS && surf->styles[samp] != 255 )
+	{
+		int scale_value=int( (
+			r_newrefdef.lightstyles[ surf->styles[samp] ].rgb[0] +
+			r_newrefdef.lightstyles[ surf->styles[samp] ].rgb[1] +
+			r_newrefdef.lightstyles[ surf->styles[samp] ].rgb[2]) * (256.0*0.3333f) );
+		//stupid gamex86.dll can send negative values
+		if( scale_value < 0 ) scale_value= 0;
+
+		unsigned char* in= surf->samples + ds*samp;
+		for( int i= 0; i< ds; i++ )
+		{
+			int c;
+			c= ((in[i] * scale_value)>>8) + out[i];
+			if( c > 255 ) c= 255; out[i]= c;
+		}
+		samp++;
+	}
 }
 
 //convert rgbs to colored
-void GenerateLightmapRGBStoColored( unsigned char* out, msurface_t* surf, int lightstyle )
+void GenerateLightmapRGBStoColored( unsigned char* out, msurface_t* surf )
 {
 	int size_x, size_y;
 	size_x= (surf->extents[0]>>4) + 1;
 	size_y= (surf->extents[1]>>4) + 1;
 	int ds= 4 * size_x * size_y;
-	memcpy( out, surf->samples + lightstyle*ds, ds );
-	for( int i=0; i< ds; i+=4 )
+	if( surf->styles[1] == 255 )
 	{
-		int s= out[i+3];
-		out[i  ]= ( out[i  ] * s )/255;
-		out[i+1]= ( out[i+1] * s )/255;
-		out[i+2]= ( out[i+2] * s )/255;
+		memcpy( out, surf->samples, ds );
+		for( int i=0; i< ds; i+=4 )
+		{
+			int s= out[i+3];
+			out[i  ]= ( out[i  ] * s )/255;
+			out[i+1]= ( out[i+1] * s )/255;
+			out[i+2]= ( out[i+2] * s )/255;
+		}return;
+	}
+	int samp= 0;
+	for( int i= 0; i< ds; i+=4 )
+			out[i]= out[i+1]= out[i+2]= 0;
+	while( samp < MAXLIGHTMAPS && surf->styles[samp] != 255 )
+	{
+		int scale_values[3]= {
+			int(r_newrefdef.lightstyles[ surf->styles[samp] ].rgb[0] * 256.0f),
+			int(r_newrefdef.lightstyles[ surf->styles[samp] ].rgb[1] * 256.0f),
+			int(r_newrefdef.lightstyles[ surf->styles[samp] ].rgb[2] * 256.0f) };
+		//stupid gamex86.dll can send negative values
+		if( scale_values[0] < 0 ) scale_values[0]= 0;
+		if( scale_values[1] < 0 ) scale_values[1]= 0;
+		if( scale_values[2] < 0 ) scale_values[2]= 0;
+
+		ColorIntSwap( scale_values );
+		unsigned char* in= surf->samples + ds*samp;
+		for( int i= 0; i< ds; i+=4 )
+		{
+			int c;
+			c= (( in[i+3] * in[i  ] * scale_values[0])/(255*256)) + out[i  ];
+			if( c > 255 ) c= 255; out[i  ]= c;
+			c= ((in[i+3] * in[i+1] * scale_values[1])/(255*256)) + out[i+1];
+			if( c > 255 ) c= 255; out[i+1]= c;
+			c= ((in[i+3] * in[i+2] * scale_values[2])/(255*256)) + out[i+2];
+			if( c > 255 ) c= 255; out[i+2]= c;
+		}
+		samp++;
 	}
 }
 
@@ -242,17 +330,16 @@ unsigned char* L_GetSurfaceDynamicLightmap( msurface_t* surf )
 	size_x= (surf->extents[0]>>4) + 1;
 	size_y= (surf->extents[1]>>4) + 1;
 
-	int cur_sample= 0;
 
 	if( surf->dlightframe == r_dlightframecount )
 	{
 		unsigned char* lightmap= lightmap_buffer.buffer + lightmap_buffer.current_pos;
 		if( lightmap_type == D_LIGHTMAP_LINEAR_COLORED )
-			GenerateLightmapColored( lightmap, surf, cur_sample );
+			GenerateLightmapColored( lightmap, surf );
 		else if( lightmap_type == D_LIGHTMAP_LINEAR_RGBS )
-			GenerateLightmapRGBStoColored( lightmap, surf, cur_sample );
+			GenerateLightmapRGBStoColored( lightmap, surf );
 		else
-			GenerateLightmapLinear( lightmap, surf, cur_sample );
+			GenerateLightmapLinear( lightmap, surf );
 
 		float surf_scale= sqrtf( DotProduct( surf->texinfo->vecs[0], surf->texinfo->vecs[0] ) );
 		for( int i= 0; i< r_newrefdef.num_dlights; i++ )
@@ -317,10 +404,25 @@ unsigned char* L_GetSurfaceDynamicLightmap( msurface_t* surf )
 		lightmap_buffer.current_pos+= (is_colored_lightmap)? size_x * size_y * 4 : size_x * size_y;
 		return lightmap;
 	}
-	else
+	else if( surf->styles[1] != 255 )
 	{
-		return surf->samples + (cur_sample * size_x * size_y * ( (is_colored_lightmap) ? 4 : 1 ));
+		unsigned char* lightmap= lightmap_buffer.buffer + lightmap_buffer.current_pos;
+
+		if( lightmap_type == D_LIGHTMAP_LINEAR_COLORED )
+			GenerateLightmapColored( lightmap, surf );
+		else if( lightmap_type == D_LIGHTMAP_LINEAR_RGBS )
+			GenerateLightmapRGBStoColored( lightmap, surf );
+		else
+			GenerateLightmapLinear( lightmap, surf );
+
+		if( lightmap_type == D_LIGHTMAP_LINEAR_RGBS )
+			ConverLightmapColored2RGBS( lightmap, size_x * size_y );
+
+		lightmap_buffer.current_pos+= (is_colored_lightmap)? size_x * size_y * 4 : size_x * size_y;
+		return lightmap;
 	}
+	else
+		return surf->samples;
 }
 
 
@@ -422,13 +524,19 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 			int lightmap_size= (is_colored_lightmap) ? 4 : 1;
 			lightmap += ( dt * ((surf->extents[0]>>4)+1) + ds ) * lightmap_size;
 
-			/*for (maps = 0 ; maps < MAXLIGHTMAPS && surf->styles[maps] != 255 ;
+			for (maps = 0 ; maps < MAXLIGHTMAPS && surf->styles[maps] != 255 ;
 					maps++)
 			{
 				if( is_colored_lightmap )
 				{
 					scales = r_newrefdef.lightstyles[surf->styles[maps]].rgb;
 					float swapped_scales[3]= { scales[0], scales[1], scales[2] };
+					
+					//clamp negative values
+					if( swapped_scales[0] < 0.0f ) swapped_scales[0]= 0.0f;
+					if( swapped_scales[1] < 0.0f ) swapped_scales[1]= 0.0f;
+					if( swapped_scales[2] < 0.0f ) swapped_scales[2]= 0.0f;
+
 					ColorFloatSwap( swapped_scales );
 					float light_scaler= 1.0f / 255.0f;
 					if( lightmap[3] != 0 )
@@ -439,15 +547,21 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 				}
 				else
 				{
-					float l= float(lightmap[0]) * r_newrefdef.lightstyles[surf->styles[maps]].white / 255.0f;
+					float l= (
+						r_newrefdef.lightstyles[surf->styles[maps]].rgb[0] + 
+						r_newrefdef.lightstyles[surf->styles[maps]].rgb[1] + 
+						r_newrefdef.lightstyles[surf->styles[maps]].rgb[2]  ) * ( 1.0f / (3.0f * 255.0f ) );
+					if( l < 0.0f )
+						continue;
+					l*= float(lightmap[0]);
 					pointcolor[0]+= l;
 					pointcolor[1]+= l;
 					pointcolor[2]+= l;
 				}
 				lightmap+= ( ((surf->extents[0]>>4)+1) * ((surf->extents[1]>>4)+1) ) * lightmap_size;
-			}*/
+			}
 			//take first lightmap only (temporary)
-			if( is_colored_lightmap )
+			/*if( is_colored_lightmap )
 			{
 				float light_scaler= 1.0f / 255.0f;
 				if( lightmap[3] != 0 )
@@ -462,7 +576,7 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 				pointcolor[0]+= l;
 				pointcolor[1]+= l;
 				pointcolor[2]+= l;
-			}
+			}*/
 			
 		}//if is lightmap
 		
