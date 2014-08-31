@@ -1,4 +1,6 @@
 #include "psr.h"
+#include "fixed.h"
+#include <math.h>
 
 extern void* framebuffer_data;
 extern unsigned char* screen_buffer;
@@ -81,8 +83,59 @@ extern "C" void PRast_MakeGammaCorrection( const unsigned char* gamma_table )
 #endif
 }
 
+#define FOG_TABLE_SIZE 4096
+unsigned char fog_table[FOG_TABLE_SIZE];
+
+
+extern "C" void PRast_AddFullscreenExponentialFog( float fog_half_distance, const unsigned char* color )
+{
+	const int depth2table_convert_k= 65536/FOG_TABLE_SIZE;
+
+	float neg_ln_05= -0.69f;
+	float depth_convert_k= neg_ln_05 / ( 65536.0f * fog_half_distance );
+
+	fog_table[0]= 255;
+	for( int i= 1; i< FOG_TABLE_SIZE; i++ )
+	{
+		fixed16_t depth= Fixed16Div( PSR_MIN_ZMIN, i * depth2table_convert_k ); //real depth in fixed16_t format
+
+		//exponential fog formula. fog_distance is distance, where fog intencity is half
+		fog_table[i]= int( 255.0f * ( 1.0f - exp( float(depth) * depth_convert_k ) ) );
+	}
+
+	if( false )
+	{
+		for( int i= 0, i_end= screen_size_x * screen_size_y * 4; i!= i_end; i+=4 )
+		{
+			int d= depth_buffer[i>>2];
+			int dd= d % depth2table_convert_k;
+			unsigned char  k[2]= {
+				fog_table[ d     / depth2table_convert_k ],
+				fog_table[ (d-1) / depth2table_convert_k ] };
+
+			int a= ( k[1] * dd + k[0] * ( depth2table_convert_k - dd ) ) / depth2table_convert_k;
+			int inv_a= 255 - a;
+			screen_buffer[i  ]= ( screen_buffer[i  ] * inv_a + color[0] * a )>>8;
+			screen_buffer[i+1]= ( screen_buffer[i+1] * inv_a + color[1] * a )>>8;
+			screen_buffer[i+2]= ( screen_buffer[i+2] * inv_a + color[2] * a )>>8;
+		}
+	}//if interpolate values from fog table
+	else
+	{
+		for( int i= 0, i_end= screen_size_x * screen_size_y * 4; i!= i_end; i+=4 )
+		{
+			int a= fog_table[ depth_buffer[i>>2] / depth2table_convert_k ];
+			int inv_a= 255 - a;
+			screen_buffer[i  ]= ( screen_buffer[i  ] * inv_a + color[0] * a )>>8;
+			screen_buffer[i+1]= ( screen_buffer[i+1] * inv_a + color[1] * a )>>8;
+			screen_buffer[i+2]= ( screen_buffer[i+2] * inv_a + color[2] * a )>>8;
+		}
+	}//if nearest fetch from fog table
+}
+
 extern "C" void PRast_MirrorFramebufferVertical()
 {
+
 #ifdef PSR_MASM32
 	unsigned char* line0= screen_buffer;
 	unsigned char* line1= screen_buffer + ((screen_size_x*(screen_size_y-1))<<2);

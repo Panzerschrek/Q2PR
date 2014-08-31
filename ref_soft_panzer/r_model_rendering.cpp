@@ -378,6 +378,20 @@ void CalculateModelVertices(  entity_t* ent )
 			current_model_vertices[i].z= ( float(frame->verts[i].v[2]) * frame->scale[2] + frame->translate[2] );
 		}
 	}
+
+	//add effects, like QuadDamage or Invulerability
+	if ( (ent->flags & (RF_SHELL_RED|RF_SHELL_GREEN|RF_SHELL_BLUE|RF_SHELL_DOUBLE|RF_SHELL_HALF_DAM) ) != 0 )
+	{
+		dtrivertx_t* in_v= frame->verts;
+		for( m_Vec3* v= current_model_vertices, *v_end= current_model_vertices + model->num_xyz;
+			v< v_end; v++, in_v++ )
+		{
+			int normal_index= in_v->lightnormalindex;
+			v->x+= r_avertexnormals[ normal_index ][0] * POWERSUIT_SCALE;
+			v->y+= r_avertexnormals[ normal_index ][1] * POWERSUIT_SCALE;
+			v->z+= r_avertexnormals[ normal_index ][2] * POWERSUIT_SCALE;
+		}
+	}
 }
 
 enum AliasModelVisibilityType

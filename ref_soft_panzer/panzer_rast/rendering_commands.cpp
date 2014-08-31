@@ -7,6 +7,7 @@ extern "C" void PRast_AlphaBlendColorBuffer( const unsigned char* color );
 extern "C" void PRast_MakeGammaCorrection( const unsigned char* gamma_table );
 extern "C" void PRast_SwapRedBlueLostAlphaInFramebuffer();
 extern "C" void PRast_MirrorFramebufferVertical();
+extern "C" void PRast_AddFullscreenExponentialFog( float half_distance, const unsigned char* color );
 
 namespace Draw
 {
@@ -72,6 +73,19 @@ unsigned int ComIn_MirrorVerticalColorBuffer( void* command_buffer )
 {
 	*((int*)command_buffer)= COMMAND_MIRROR_VERTICAL_COLOR_BUFFER;
 	return sizeof(int);
+}
+
+unsigned int ComIn_AddExponentialFog( void* command_buffer, float half_distance, const unsigned char* color )
+{
+	*((int*)command_buffer)= COMMAND_ADD_EXPONENTIAL_FOG;
+	command_buffer= ((int*)command_buffer) + 1;
+
+	*((float*)command_buffer)= half_distance;
+	command_buffer= ((int*)command_buffer) + 1;
+
+	*((int*)command_buffer)= *((int*)color);
+
+	return sizeof(int) + sizeof(float) + 4;
 }
 
 
@@ -203,6 +217,12 @@ unsigned int ComOut_MirrorVerticalColorBuffer( const void* command_buffer )
 {
 	PRast_MirrorFramebufferVertical();
 	return 0;
+}
+
+unsigned int ComOut_AddExponentialFog( const void* command_buffer )
+{
+	PRast_AddFullscreenExponentialFog( *((float*)command_buffer), ((unsigned char*)command_buffer + 4) );
+	return sizeof(float)+4;
 }
 
 unsigned int ComOut_SetConstantAlpha( const void* command_buffer )
@@ -341,6 +361,7 @@ ComOut_FadeColorBuffer,
 ComOut_GammaCorrectColorBuffer,
 ComOut_SwapRedBlueInColorBuffer,
 ComOut_MirrorVerticalColorBuffer,
+ComOut_AddExponentialFog,
 
 ComOut_SetConstantAlpha,
 ComOut_SetConstantBlendFactor,

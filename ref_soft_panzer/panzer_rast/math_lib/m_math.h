@@ -150,10 +150,9 @@ MATH_FUNC_INLINE float m_Math::Sin(float x)
         fstp r
     }
 #else
-    r= sin(x);
+    r= sinf(x);
 #endif
     return r;
-    //return sinf(x);
 }
 
 MATH_FUNC_INLINE float m_Math::Cos(float x)
@@ -167,10 +166,9 @@ MATH_FUNC_INLINE float m_Math::Cos(float x)
         fstp r
     }
 #else
-    r= cos(x);
+    r= cosf(x);
 #endif
     return r;
-    //return cosf(x);
 }
 
 MATH_FUNC_INLINE void m_Math::SinCos(float x,float* s,float* c)
@@ -187,8 +185,8 @@ MATH_FUNC_INLINE void m_Math::SinCos(float x,float* s,float* c)
         fstp dword ptr [edx]
     }
 #else
-    *s= sin(x);
-    *c= cos(x);
+    *s= sinf(x);
+    *c= cosf(x);
 #endif
 }
 

@@ -19,6 +19,10 @@ static dlight_t transformed_dlights[MAX_DLIGHTS];//transformed lights( saturatio
 #define D_LIGHTMAP_LINEAR_RGBS 1
 #define D_LIGHTMAP_LINEAR_COLORED 2
 
+//#define LIGHT_SCALER 0.25f
+#define LIGHT_SCALER 0.125f
+#define LIGHTMAP_SCALER 0.0625f// 1/16 lightmap per pixel
+
 static int lightmap_type;
 static bool is_colored_lightmap;
 
@@ -30,6 +34,15 @@ void TransformLights( m_Mat4* mat, int light_count )
 	}
 }
 
+
+float sign( float x )
+{
+	if( x > 0.0f )
+		return 1.0f;
+	else if ( x < 0.0f )
+		return -1.0f;
+	return 0.0f;
+}
 void ColorCorrectLights( int num_lights )
 {
 	float sat= r_dlights_saturation->value;
@@ -96,12 +109,25 @@ void R_MarkLights (dlight_t *light, int bit, mnode_t *node)
 //PGM
 //=====
 
-	if (dist > i)	// PGM (dist > light->intensity)
+	float min_intensity= 2.0f;
+	float max_dst=  sqrtf( fabs( ( LIGHT_SCALER * 256.0f / LIGHTMAP_SCALER ) * light->intensity ) / min_intensity );
+
+	/*if (dist > i)	// PGM (dist > light->intensity)
 	{
 		R_MarkLights (light, bit, node->children[0]);
 		return;
 	}
 	if (dist < -i)	// PGM (dist < -light->intensity)
+	{
+		R_MarkLights (light, bit, node->children[1]);
+		return;
+	}*/
+	if (dist > max_dst)	// PGM (dist > light->intensity)
+	{
+		R_MarkLights (light, bit, node->children[0]);
+		return;
+	}
+	if (dist < -max_dst)	// PGM (dist < -light->intensity)
 	{
 		R_MarkLights (light, bit, node->children[1]);
 		return;
@@ -180,6 +206,8 @@ void GenerateLightmapColored( unsigned char* out, msurface_t* surf )
 	if( surf->styles[1] == 255 )
 	{
 		memcpy( out, surf->samples, ds );
+		//for( int i= 0; i< ds; i+=4 )//make fullbright lightmap for tests
+		//	out[i]= out[i+1]= out[i+2]= 255;
 		return;
 	}
 	int samp= 0;
@@ -324,7 +352,6 @@ void R_SwapLightmapBuffers()
 
 unsigned char* L_GetSurfaceDynamicLightmap( msurface_t* surf )
 {
-	const float light_scaler= 0.25f;
 	const float max_light= 512.0f;
 	int size_x, size_y;
 	size_x= (surf->extents[0]>>4) + 1;
@@ -341,7 +368,9 @@ unsigned char* L_GetSurfaceDynamicLightmap( msurface_t* surf )
 		else
 			GenerateLightmapLinear( lightmap, surf );
 
-		float surf_scale= sqrtf( DotProduct( surf->texinfo->vecs[0], surf->texinfo->vecs[0] ) );
+		float surf_scale[2]={
+			1.0f / sqrtf( DotProduct( surf->texinfo->vecs[0], surf->texinfo->vecs[0] ) ),
+			1.0f / sqrtf( DotProduct( surf->texinfo->vecs[1], surf->texinfo->vecs[1] ) ) };
 		for( int i= 0; i< r_newrefdef.num_dlights; i++ )
 		{
 			if( (surf->dlightbits&(1<<i)) == 0 )
@@ -364,10 +393,12 @@ unsigned char* L_GetSurfaceDynamicLightmap( msurface_t* surf )
 			for( int y= 0; y< size_y; y++ )
 				for( int x= 0; x< size_x; x++ )
 				{
-					float texel_pos[]= { x - transformed_pos[0], y - transformed_pos[1] };
+					float texel_pos[]= {
+						surf_scale[0] * ( float(x) - transformed_pos[0] ),
+						surf_scale[1] * ( float(y) - transformed_pos[1] ) };
 					float dst2= (texel_pos[0]*texel_pos[0] + texel_pos[1]*texel_pos[1] + transformed_pos[2]*transformed_pos[2]);
 					float cos_dot= transformed_pos[2] / sqrtf(dst2);
-					float intensity= surf_scale * cos_dot * (light_scaler * 256.0f) * fabs(light->intensity) / dst2;
+					float intensity=  cos_dot * (LIGHT_SCALER * 256.0f) * fabs(light->intensity) / dst2;
 					if( intensity > 1.0f )
 					{
 						if(intensity>max_light )

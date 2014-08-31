@@ -680,6 +680,58 @@ void InitPlayerFlashlight()
 extern void DrawSkyBox( const m_Mat4* rot_mat, vec3_t cam_pos );
 
 
+void DrawUnderwater()
+{
+	if( (r_newrefdef.rdflags&RDF_UNDERWATER) == 0 )
+		return;
+
+	static int underwater_frame= 0;
+	static float prev_fog_color[3];
+
+	float fog_color[3];
+	unsigned char fog_color_scaled[4];
+
+	float pos[3];
+	VectorCopy( r_newrefdef.vieworg, pos );
+
+	R_LightPoint( r_newrefdef.vieworg, fog_color );
+
+	if( underwater_frame == r_framecount - 1 )
+	{
+		//blend current underwater fog color with color in previous frame
+		float fade_per_second= 0.75f;
+		float k = pow( fade_per_second, 1.0f / float(fps_calc.last_fps) );
+		for( int i= 0; i< 3; i++ )
+			prev_fog_color[i]= prev_fog_color[i] * k + fog_color[i] * (1.0f-k);
+	}
+	else
+	{
+		for( int i= 0; i< 3; i++ )
+			prev_fog_color[i]= fog_color[i];
+	}
+
+	for( int i= 0; i< 3; i++ )
+		fog_color_scaled[i]= int( 255.0f * ( prev_fog_color[i] > 1.0f ? 1.0f : prev_fog_color[i] ) );
+
+	
+	command_buffer.current_pos+= 
+		ComIn_AddExponentialFog( (char*)command_buffer.buffer + command_buffer.current_pos, 6.0f, fog_color_scaled );
+
+	underwater_frame= r_framecount;
+}
+
+void DrawFullscreenBlend()
+{
+	unsigned char blend_color[]= {
+			r_newrefdef.blend[0]*255.0f, r_newrefdef.blend[1]*255.0f, r_newrefdef.blend[2]*255.0f, r_newrefdef.blend[3]*255.0f };
+		ColorByteSwap( blend_color );
+
+	if( blend_color[3] > 4 )
+		command_buffer.current_pos+= ComIn_AlphaBlendColorBuffer( 
+			(char*)command_buffer.buffer + command_buffer.current_pos,
+			blend_color);
+}
+
 extern "C" void PANZER_RenderFrame(refdef_t *fd)
 {
 	r_newrefdef= *fd;
@@ -765,15 +817,8 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 
 		DrawParticles( &result,  fd->particles, fd->num_particles, fd->fov_y * to_rad );
 
-
-		unsigned char blend_color[]= {
-			fd->blend[0]*255.0f, fd->blend[1]*255.0f, fd->blend[2]*255.0f, fd->blend[3]*255.0f };
-		ColorByteSwap( blend_color );
-
-		if( blend_color[3] > 4 )
-			command_buffer.current_pos+= ComIn_AlphaBlendColorBuffer( 
-				(char*)command_buffer.buffer + command_buffer.current_pos,
-				blend_color);
+		DrawFullscreenBlend();
+		DrawUnderwater();
 
 	}
 	else

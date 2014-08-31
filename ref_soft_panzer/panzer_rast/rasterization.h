@@ -18,6 +18,7 @@ void PRast_SwapRedBlueLostAlphaInFramebuffer();
 void PRast_SwapRedBlueInFramebuffer();
 void PRast_MirrorFramebufferVertical();
 void PRast_MakeGammaCorrection(const unsigned char* gamma_table);
+void PRast_AddFullscreenExponentialFog( float half_distance, const unsigned char* color );
 //void ClearDepthBufferByZValue( fixed16_t z );
 //void SwapBuffers();
 

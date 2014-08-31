@@ -13,6 +13,7 @@ enum RenderingCommands
 	COMMAD_GAMMA_CORRECT_COLOR_BUFFER,
 	COMMAND_SWAP_RED_BLUE_IN_COLOR_BUFFER,
 	COMMAND_MIRROR_VERTICAL_COLOR_BUFFER,
+	COMMAND_ADD_EXPONENTIAL_FOG,
 
 	//state change commands
 	COMMAND_SET_CONSTANT_ALPHA,
@@ -93,6 +94,7 @@ unsigned int ComIn_AlphaBlendColorBuffer( void* command_buffer, const unsigned c
 unsigned int ComIn_GammaCorrectColorBuffer( void* command_buffer, const unsigned char* gamma_table );
 unsigned int ComIn_SwapRedBlueInColorBuffer( void* command_buffer );
 unsigned int ComIn_MirrorVerticalColorBuffer( void* command_buffer );
+unsigned int ComIn_AddExponentialFog( void* command_buffer, float half_distance, const unsigned char* color );
 
 unsigned int ComIn_SetConstantAlpha( void* command_buffer, unsigned char alpha );
 unsigned int ComIn_SetConstantBlendFactor( void* command_buffer, unsigned char blend_factor );
