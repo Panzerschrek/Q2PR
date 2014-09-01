@@ -817,6 +817,14 @@
 				<File
 					RelativePath=".\panzer_rast\fullscreen_draw_commands.cpp"
 					>
+					<FileConfiguration
+						Name="Release Alpha|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							AssemblerOutput="4"
+						/>
+					</FileConfiguration>
 				</File>
 				<File
 					RelativePath=".\panzer_rast\rasterization.cpp"

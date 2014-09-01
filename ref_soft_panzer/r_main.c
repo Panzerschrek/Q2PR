@@ -216,6 +216,87 @@ unsigned int	d_zwidth;
 #endif	// !id386
 
 
+
+
+/* 
+================== 
+GL_ScreenShot_f
+================== 
+*/  
+void R_ScreenShot_f (void) 
+{
+	byte		*buffer;
+	char		picname[80]; 
+	char		checkname[MAX_OSPATH];
+	int			i, c, temp;
+	FILE		*f;
+
+	unsigned char* dst, *src;
+
+	// create the scrnshots directory if it doesn't exist
+	Com_sprintf (checkname, sizeof(checkname), "%s/scrnshot", ri.FS_Gamedir());
+	Sys_Mkdir (checkname);
+
+// 
+// find a file name to save it to 
+// 
+	strcpy(picname,"quake00.tga");
+
+	for (i=0 ; i<=99 ; i++) 
+	{ 
+		picname[5] = i/10 + '0'; 
+		picname[6] = i%10 + '0'; 
+		Com_sprintf (checkname, sizeof(checkname), "%s/scrnshot/%s", ri.FS_Gamedir(), picname);
+		f = fopen (checkname, "rb");
+		if (!f)
+			break;	// file doesn't exist
+		fclose (f);
+	} 
+	if (i==100) 
+	{
+		ri.Con_Printf (PRINT_ALL, "SCR_ScreenShot_f: Couldn't create a file\n"); 
+		return;
+ 	}
+
+
+	buffer = malloc(vid.width*vid.height*3 + 18);
+	memset (buffer, 0, 18);
+	buffer[2] = 2;		// uncompressed type
+	buffer[12] = vid.width&255;
+	buffer[13] = vid.width>>8;
+	buffer[14] = vid.height&255;
+	buffer[15] = vid.height>>8;
+	buffer[16] = 24;	// pixel size
+
+	//qglReadPixels (0, 0, vid.width, vid.height, GL_RGB, GL_UNSIGNED_BYTE, buffer+18 ); 
+	src= vid.buffer;
+	dst= buffer+18;
+	for( i= 0; i<  vid.width * vid.height; i++, dst+=3, src+=4 )
+	{
+		dst[0]= src[0];
+		dst[1]= src[1];
+		dst[2]= src[2];
+	}
+
+	c = 18+vid.width*vid.height*3;
+	// swap rgb to bgr 
+	//PANZER - do not need it
+	/*for (i=18 ; i<c ; i+=3)
+	{
+		temp = buffer[i];
+		buffer[i] = buffer[i+2];
+		buffer[i+2] = temp;
+	}*/
+
+	f = fopen (checkname, "wb");
+	fwrite (buffer, 1, c, f);
+	fclose (f);
+
+	free (buffer);
+	ri.Con_Printf (PRINT_ALL, "Wrote %s\n", picname);
+} 
+
+
 void Draw_GetPalette (void)
 {
 	byte	*pal, *out;
@@ -322,8 +403,9 @@ void PANZER_Register (void)
 	r_interpolate_videos= ri.Cvar_Get( "r_interpolate_videos", "1", CVAR_ARCHIVE );
 	r_clear_color_buffer= ri.Cvar_Get( "r_clear_color_buffer", "0", CVAR_ARCHIVE );
 
-	ri.Cmd_AddCommand( "flashlight", R_Flashlight_f );
-	ri.Cmd_ExecuteText( 0, "bind f flashlight" );
+	//ri.Cmd_AddCommand( "flashlight", R_Flashlight_f );
+	//ri.Cmd_ExecuteText( 0, "bind f flashlight" );
+	ri.Cmd_AddCommand( "screenshot", R_ScreenShot_f );
 
 	sw_mode->modified = true; // force us to do mode specific stuff later
 	vid_gamma->modified = true; // force us to rebuild the gamma table later
@@ -339,6 +421,7 @@ void PANZER_Register (void)
 void R_UnRegister (void)
 {
 	ri.Cmd_RemoveCommand( "flashlight" );
+	ri.Cmd_RemoveCommand( "screenshot" );
 }
 
 
@@ -399,8 +482,8 @@ struct image_s *PANZER_RegisterPic(char *name)
 struct image_s *PANZER_RegisterSkin(char *name)
 {
 	image_t	*image;
-	image = R_FindImage (name+1, it_skin);
-	//printf( "register skin \"%s\"\n", name );
+	image = R_FindImage (name, it_skin);
+	//printf( "register skin \"%s\"%s\n", name, image == NULL ? " - failed" : "" );
 	return image;
 }
 
@@ -431,7 +514,7 @@ void PANZER_DrawGetPicSize(int *w, int *h, char *name)
 }
 extern void PANZER_DrawPic(int x, int y, char *name);
 extern void PANZER_DrawChar(int x, int y, int c);
-void PANZER_DrawTileClear(int x, int y, int w, int h, char *name){}
+extern void PANZER_DrawTileClear(int x, int y, int w, int h, char *name);
 extern void PANZER_DrawFill(int x, int y, int w, int h, int c);
 
 extern void PANZER_DrawStretchPic(int x, int y, int w, int h, char *name);

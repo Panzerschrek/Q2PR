@@ -325,11 +325,6 @@ extern "C" void PANZER_DrawStretchPic(int x, int y, int w, int h, char *name)
 	image_t* img= PANZER_RegisterPic( name );
 	if( img == NULL )
 		return;
-	char	fullname[MAX_QPATH];
-	if (name[0] != '/' && name[0] != '\\' )
-		Com_sprintf (fullname, sizeof(fullname), "pics/%s.pcx", name);
-	else
-		strcpy(fullname, name+1);
 
 	Texture* tex= R_FindTexture( img );
 	command_buffer.current_pos+= ComIn_SetTexture( (char*)command_buffer.buffer + command_buffer.current_pos, tex );
@@ -370,11 +365,6 @@ extern "C" void PANZER_DrawPic(int x, int y, char *name)
 	image_t* img= PANZER_RegisterPic( name );
 	if( img == NULL )
 		return;
-	char	fullname[MAX_QPATH];
-	if ( name[0] != '/' && name[0] != '\\' )
-		Com_sprintf (fullname, sizeof(fullname), "pics/%s.pcx", name);
-	else
-		strcpy(fullname, name+1);
 
 	Texture* tex= R_FindTexture( img );
 	command_buffer.current_pos+= ComIn_SetTexture( (char*)command_buffer.buffer + command_buffer.current_pos, tex );
@@ -496,6 +486,113 @@ void CalculateAndShowFPS()
 }
 
 
+static char tile_pic_name[MAX_QPATH];
+static int tile_draw_call_frame= -1;
+
+extern "C" void PANZER_DrawTileClear(int x, int y, int w, int h, char *name)
+{
+	tile_draw_call_frame= r_framecount;
+	strcpy( tile_pic_name, name );
+}
+
+void DrawTiles()
+{
+	if( r_framecount-1 != tile_draw_call_frame )//if in previous frame nothing calls PANZER_DrawTileClear
+		return;
+
+	//HACK - detection of fully filled screen ( if not need tiles rendering )
+	if( r_newrefdef.x == 0 )
+		return;
+
+	image_t* img= PANZER_RegisterPic( tile_pic_name );
+	if( img == NULL )
+		return;
+
+	char* buff= (char*)command_buffer.buffer;
+	buff+= command_buffer.current_pos;
+	char* buff0= buff;
+
+	Texture* tex= R_FindTexture( img );
+	buff+= ComIn_SetTexture( buff, tex );
+
+	*((int*)buff)= COMMAND_DRAW_SPRITE;
+	buff+= sizeof(int);
+
+	DrawSpriteCall* call= (DrawSpriteCall*)buff;
+
+	call->DrawSpriteFunc= DrawStretchTextureRGBANoAlphaTest;
+	call->sprite_count= 0;
+
+	buff+= sizeof(DrawSpriteCall);
+
+	int y_tiles= vid.height / tex->OriginalSizeY();
+	if( y_tiles * tex->OriginalSizeX() < vid.height ) y_tiles++;
+
+	int x_tiles= r_newrefdef.x / tex->OriginalSizeX();
+	if( x_tiles * tex->OriginalSizeX() < r_newrefdef.x ) x_tiles++;
+
+	for( int y= 0; y< y_tiles; y++ )
+	{
+		for( int x= 0; x< x_tiles; x++ )
+		{
+			((int*)buff)[0]=	 x * tex->OriginalSizeX();
+			((int*)buff)[1]=	 y * tex->OriginalSizeY();
+			((int*)buff)[2]= (x+1) * tex->OriginalSizeX();
+			((int*)buff)[3]= (y+1) * tex->OriginalSizeY();
+			((int*)buff)[4]= 65536;
+			 call->sprite_count++;
+			 buff+= 5 * sizeof(int);
+		}
+		int x_shift= ( r_newrefdef.x + r_newrefdef.width );
+		for( int x= 0; x< x_tiles; x++ )
+		{
+			((int*)buff)[0]=	 x * tex->OriginalSizeX() + x_shift;
+			((int*)buff)[1]=	 y * tex->OriginalSizeY();
+			((int*)buff)[2]= (x+1) * tex->OriginalSizeX() + x_shift;
+			((int*)buff)[3]= (y+1) * tex->OriginalSizeY();
+			((int*)buff)[4]= 65536;
+			 call->sprite_count++;
+			 buff+= 5 * sizeof(int);
+		}
+	}
+
+	x_tiles= r_newrefdef.width / tex->OriginalSizeX();
+	if( x_tiles * tex->OriginalSizeX() < r_newrefdef.width ) x_tiles++;
+
+	y_tiles= r_newrefdef.y / tex->OriginalSizeY();
+	if( y_tiles * tex->OriginalSizeY() < r_newrefdef.y ) y_tiles++;
+
+	for( int y= 0; y< y_tiles; y++ )
+	{
+		int x_shift= r_newrefdef.x;
+		for( int x= 0; x< x_tiles; x++ )
+		{
+			((int*)buff)[0]=	 x * tex->OriginalSizeX() + x_shift;
+			((int*)buff)[1]=	 y * tex->OriginalSizeY();
+			((int*)buff)[2]= (x+1) * tex->OriginalSizeX() + x_shift;
+			((int*)buff)[3]= (y+1) * tex->OriginalSizeY();
+			((int*)buff)[4]= 65536;
+			 call->sprite_count++;
+			 buff+= 5 * sizeof(int);
+		}
+		int y_shift= ( r_newrefdef.y + r_newrefdef.height );
+		for( int x= 0; x< x_tiles; x++ )
+		{
+			((int*)buff)[0]=	 x * tex->OriginalSizeX() + x_shift;
+			((int*)buff)[1]=	 y * tex->OriginalSizeY() + y_shift;
+			((int*)buff)[2]= (x+1) * tex->OriginalSizeX() + x_shift;
+			((int*)buff)[3]= (y+1) * tex->OriginalSizeY() + y_shift;
+			((int*)buff)[4]= 65536;
+			 call->sprite_count++;
+			 buff+= 5 * sizeof(int);
+		}
+	}
+
+
+	command_buffer.current_pos+= buff - buff0;
+}
+
+
 extern "C" void PANZER_DrawFill(int x, int y, int w, int h, int c)
 {
 	char* buff= (char*)command_buffer.buffer;
@@ -547,17 +644,15 @@ void DrawParticles( const m_Mat4* mat, particle_t* particles, int count, float f
 								command_buffer.size + call_size * count,
 								&command_buffer.size );
 
-
-	float width2= float(vid.width)*0.5f;
-	float height2= float(vid.height)*0.5f;
 	unsigned char color[4];
-	float init_sprite_radius = float(vid.width)/( sin(fov_rad*0.5f) * 256.0f );
+	float init_sprite_radius = float(r_newrefdef.width)/( sin(fov_rad*0.5f) * 256.0f );
 
 	/*command_buffer.current_pos+=
 		ComIn_SetTexture( (char*)command_buffer.buffer + command_buffer.current_pos,
 		&particle_texture );
 	*/
 
+	const float inv_65536= 1.0f / 65536.0f;
 	for( int i= 0; i< count; i++ )
 	{
 		m_Vec3 pos( particles[i].origin[0],particles[i].origin[1], particles[i].origin[2] );
@@ -566,8 +661,11 @@ void DrawParticles( const m_Mat4* mat, particle_t* particles, int count, float f
 			continue;
 		float inv_z = 1.0f / pos.z;
 
-		pos.x= (pos.x * inv_z + 1.0f) * width2;
-		pos.y= (pos.y * inv_z + 1.0f) * height2;
+		pos.x= (pos.x * inv_z + vertex_projection.x_add) * vertex_projection.x_mul * inv_65536;
+		pos.y= (pos.y * inv_z + vertex_projection.y_add) * vertex_projection.y_mul * inv_65536;
+		if( pos.x <= vertex_projection.x_min || pos.x >= vertex_projection.x_max ||
+			pos.y <= vertex_projection.y_min || pos.y >= vertex_projection.y_max )
+			continue;
 
 		char* buff= (char*)command_buffer.buffer;
 		buff+= command_buffer.current_pos;
@@ -601,25 +699,6 @@ void DrawParticles( const m_Mat4* mat, particle_t* particles, int count, float f
 			fixed16_t(pos.z*65536.0f) );
 		command_buffer.current_pos+= sizeof(int)*5;
 	}
-}
-
-
-void Mat4RotateX(m_Mat4* mat, float a)
-{
-	mat->Identity();
-	(*mat)[10]= cos(a);
-	(*mat)[6]= -sin(a);
-	(*mat)[9]= sin(a);
-	(*mat)[5]= cos(a);
-}
-
-void Mat4RotateZ(m_Mat4* mat, float a)
-{
-	mat->Identity();
-	(*mat)[5]= cos(a);
-	(*mat)[1]= -sin(a);
-	(*mat)[0]= cos(a);
-	(*mat)[4]= sin(a);
 }
 
 
@@ -740,93 +819,124 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 	InitPlayerFlashlight();
 	SetWorldFrame( int(r_newrefdef.time*2.0f) );
 
+	//set convertion coefficients
+	vertex_projection.x_add= ( 2.0f * float(fd->x) + float(fd->width) ) / float( fd->width);
+	vertex_projection.x_mul= float(fd->width)*0.5f * 65536.0f;
+	vertex_projection.y_add= ( 2.0f * float(vid.height - fd->y - fd->height) + float(fd->height) ) / float( fd->height);
+	vertex_projection.y_mul= float(fd->height)*0.5f * 65536.0f;
+
+	vertex_projection.x_min= float(fd->x);
+	vertex_projection.x_max= float(fd->x + fd->width);
+	vertex_projection.y_min= float(vid.height - fd->y - fd->height);
+	vertex_projection.y_max= float(vid.height - fd->y);
+
+
+	//clear depth buffer
 	command_buffer.current_pos+= ComIn_ClearDepthBuffer( 
 		(char*)command_buffer.buffer + command_buffer.current_pos, 0x0000 );
 
+	//clear color buffer ( if need )
+	if( r_clear_color_buffer->value || (fd->rdflags&RDF_NOWORLDMODEL) != 0 )
+	{
+		static const unsigned char clear_color[]= { 0, 0, 0, 0 };
+		command_buffer.current_pos+= ComIn_ClearColorBuffer(
+			(char*)command_buffer.buffer + command_buffer.current_pos, clear_color );
+	}
+
+	//set time, palette
+	command_buffer.current_pos+= ComIn_SetTexturePaletteRaw(
+		(char*)command_buffer.buffer + command_buffer.current_pos, (unsigned char*)d_8to24table );
+	command_buffer.current_pos+= ComIn_SetConstantTime(
+		(char*)command_buffer.buffer + command_buffer.current_pos, int(r_newrefdef.time*65536.0f*64.0f) );
+
+
+	//calculate matrices
+	m_Mat4 pers, rot_x, rot_y, rot_z, result, scale, basis_change, shift, normal_mat, sky_mat, sky_rot;
+
+	const float to_rad = 3.1415926535f / 180.0f;
+	m_Vec3 pos( -fd->vieworg[0], -fd->vieworg[1], -fd->vieworg[2] );
+	shift.Identity();
+	shift.Translate(pos);
+
+	rot_x.RotateX( fd->viewangles[0] * to_rad );
+	rot_z.RotateZ( (fd->viewangles[1]  + 90.0f )* to_rad );
+	rot_y.RotateY( fd->viewangles[2] * to_rad );
+
+	basis_change.Identity();
+	basis_change[0]= -1.0f;
+	basis_change[5]= 0.0f;
+	basis_change[6]= -1.0f;
+	basis_change[9]= 1.0f;
+	basis_change[10]= 0.0f;
+
+	scale.Identity();
+	scale.Scale(1.0f/float(Q2_UNITS_PER_METER));
+	pers.Identity();
+	pers[0]= 1.0f / tan( fd->fov_x * to_rad * 0.5f );
+	pers[5]= 1.0f / tan( fd->fov_y * to_rad * 0.5f );
+
+	sky_mat= scale * rot_z * rot_x * rot_y * basis_change * pers;
+	
+
+	result= shift * scale * rot_z * rot_x * rot_y * basis_change * pers;
+	SetFov(fd->fov_y * to_rad);
+
+	
+	rot_x.RotateX( -fd->viewangles[0] * to_rad );
+	rot_z.RotateZ( -(fd->viewangles[1]  + 90.0f )* to_rad );
+	rot_y.RotateY( -fd->viewangles[2] * to_rad );
+	normal_mat= rot_y * rot_x * rot_z;
+
+	//back tiles
+	DrawTiles();
+
+	//world
 	if( (fd->rdflags&RDF_NOWORLDMODEL) == 0 )
 	{
-		if( r_clear_color_buffer->value )
-		{
-			unsigned char clear_color[]= { 245, 16, 251, 0 };
-			command_buffer.current_pos+= ComIn_ClearColorBuffer(
-				(char*)command_buffer.buffer + command_buffer.current_pos, clear_color );
-		}
-
-		command_buffer.current_pos+= ComIn_SetTexturePaletteRaw(
-			(char*)command_buffer.buffer + command_buffer.current_pos, (unsigned char*)d_8to24table );
-		command_buffer.current_pos+= ComIn_SetConstantTime(
-			(char*)command_buffer.buffer + command_buffer.current_pos, int(r_newrefdef.time*65536.0f*64.0f) );
-
-		m_Mat4 pers, rot_x, rot_y, rot_z, result, scale, basis_change, shift, normal_mat, sky_mat, sky_rot;
-
-		const float to_rad = 3.1415926535f / 180.0f;
-		m_Vec3 pos( -fd->vieworg[0], -fd->vieworg[1], -fd->vieworg[2] );
-		shift.Identity();
-		shift.Translate(pos);
-	
-		rot_x.RotateX( fd->viewangles[0] * to_rad );
-		rot_z.RotateZ( (fd->viewangles[1]  + 90.0f )* to_rad );
-		rot_y.RotateY( fd->viewangles[2] * to_rad );
-
-		basis_change.Identity();
-		basis_change[0]= -1.0f;
-		basis_change[5]= 0.0f;
-		basis_change[6]= -1.0f;
-		basis_change[9]= 1.0f;
-		basis_change[10]= 0.0f;
-
-		scale.Identity();
-		scale.Scale(1.0f/float(Q2_UNITS_PER_METER));
-		pers.Identity();
-		pers[0]= 1.0f / tan( fd->fov_x * to_rad * 0.5f );
-		pers[5]= 1.0f / tan( fd->fov_y * to_rad * 0.5f );
-
-		sky_mat= scale * rot_z * rot_x * rot_y * basis_change * pers;
-		
-
-		result= shift * scale * rot_z * rot_x * rot_y * basis_change * pers;
-		SetFov(fd->fov_y * to_rad);
-
-		
-		rot_x.RotateX( -fd->viewangles[0] * to_rad );
-		rot_z.RotateZ( -(fd->viewangles[1]  + 90.0f )* to_rad );
-		rot_y.RotateY( -fd->viewangles[2] * to_rad );
-		normal_mat= rot_y * rot_x * rot_z;
-
 		InitFrustrumClipPlanes(&normal_mat, r_newrefdef.vieworg);
 		BuildSurfaceLists(&result, fd->vieworg);
 
 		SetSurfaceMatrix(&result);
 		//DrawWorldTextureChains();
 		DrawWorldSurfaces();
+	}
 
-		SetSurfaceMatrix(&result);
-		DrawEntities(&result, &normal_mat, fd->vieworg, false );
+	//solid entities
+	SetSurfaceMatrix(&result);
+	DrawEntities(&result, &normal_mat, fd->vieworg, false );
 
+
+	if( (fd->rdflags&RDF_NOWORLDMODEL) == 0 )
+	{
+		//sky
 		static float sky_pos[]= { 0.0f, 0.0f, 0.0f };
 		InitFrustrumClipPlanes(&normal_mat, sky_pos);
 		DrawSkyBox(&sky_mat, fd->vieworg);
 
+		//alpha surfaces
 		InitFrustrumClipPlanes(&normal_mat, r_newrefdef.vieworg);
 		SetSurfaceMatrix(&result);
 		DrawWorldAlphaSurfaces();
+	}
 
-		SetSurfaceMatrix(&result);
-		DrawEntities(&result, &normal_mat, fd->vieworg, true );
+	//alpha entities
+	SetSurfaceMatrix(&result);
+	DrawEntities(&result, &normal_mat, fd->vieworg, true );
 
-
+	//particles
+	if( (fd->rdflags&RDF_NOWORLDMODEL) == 0 )
 		DrawParticles( &result,  fd->particles, fd->num_particles, fd->fov_y * to_rad );
 
-		DrawFullscreenBlend();
-		DrawUnderwater();
+	DrawFullscreenBlend();
+	DrawUnderwater();
 
-	}
-	else
+	//}
+	/*else
 	{
 		unsigned char clear_color[]= { 128, 32, 128, 32 };
 	command_buffer.current_pos+= ComIn_ClearColorBuffer(
 		(char*)command_buffer.buffer + command_buffer.current_pos, clear_color );
-	}
+	}*/
 
 	if( use_multithreading)
 		DrawCharString(8, 32, "multithreading" );

@@ -27,10 +27,9 @@ surfaces_chain_t alpha_surfaces_chain;
 surfaces_chain_t sky_surfaces_chain;
 surfaces_chain_t world_surfaces_chain;
 
-float width2_f;
-float height2_f;
-float width_f;
-float height_f;
+projection_rect_t vertex_projection;
+
+
 m_Mat4 view_matrix;
 float cam_pos[3];
 float fov_y_rad;
@@ -328,8 +327,8 @@ int ClipFaceByPlane( int vertex_count, mplane_t* plane )//returns new vertex cou
 		int v1_ind= splitted_edge[i]+1; if( v1_ind == vertex_count ) v1_ind= 0;
 		float* v0= surface_vertices[v0_ind]->position, *v1= surface_vertices[v1_ind]->position;
 		
-		float k0= fabs( DotProduct(v0,normal) - plane->dist );
-		float k1= fabs( DotProduct(v1,normal) - plane->dist );
+		float k0= fabsf( DotProduct(v0,normal) - plane->dist );
+		float k1= fabsf( DotProduct(v1,normal) - plane->dist );
 		float inv_dst_sum= 1.0f / ( k0 + k1 );
 		k0*= inv_dst_sum;
 		k1*= inv_dst_sum;
@@ -356,7 +355,7 @@ int ClipFaceByPlane( int vertex_count, mplane_t* plane )//returns new vertex cou
 		surface_vertices[0]= new_v[1];
 		surface_vertices[1]= new_v[0];
 		int new_vertex_count= vertex_count - discarded_vertex_count + 2;
-		for( int i= 2, j= splitted_edge[0]+1; i < vertex_count; i++, j++ )
+		for( int i= 2, j= splitted_edge[0]+1; i < new_vertex_count; i++, j++ )
 		{	
 			surface_vertices[i]= tmp_vertices[j%vertex_count];
 		}
@@ -475,8 +474,8 @@ int DrawWorldSurface( msurface_t* surf, triangle_draw_func_t near_draw_func, tri
 		//((mvertex_t*)surface_final_vertices)[e]= *(surface_vertices[e]);
 		surface_final_vertices[e]= *((m_Vec3*)surface_vertices[e]->position) * view_matrix;
 		float inv_z= 1.0f / surface_final_vertices[e].z;
-		surface_final_vertices[e].x= (surface_final_vertices[e].x * inv_z + 1.0f ) * width2_f;
-		surface_final_vertices[e].y= (surface_final_vertices[e].y * inv_z + 1.0f ) * height2_f;
+		surface_final_vertices[e].x= (surface_final_vertices[e].x * inv_z + vertex_projection.x_add ) * vertex_projection.x_mul;
+		surface_final_vertices[e].y= (surface_final_vertices[e].y * inv_z + vertex_projection.y_add ) * vertex_projection.y_mul;
 	}
 	//texture coord morfing
 	if( (surf->flags&SURF_FLOW) != 0 )
@@ -802,7 +801,7 @@ void DrawTree_r( mnode_t* node, vec3_t cam_pos )
 				continue;
 
 			surfaces_pushed++;
-			if( (surf->flags & (SURF_DRAWSKY) ) != 0 )
+			if( (surf->flags&SURF_DRAWSKY) != 0 )
 			{
 				if( sky_surfaces_chain.first_surface == NULL )
 					sky_surfaces_chain.first_surface= sky_surfaces_chain.last_surface= surf;
@@ -910,11 +909,6 @@ void BuildSurfaceLists(m_Mat4* mat, vec3_t new_cam_pos )
 	m_Mat4 worlmodel_lights_transform_mat;
 	worlmodel_lights_transform_mat.Identity();
 	R_PushDlights( r_worldmodel, (float*)&worlmodel_lights_transform_mat );
-
-	width_f= float(vid.width) *65536.0f;
-	width2_f= width_f * 0.5f;
-	height_f= float(vid.height) *65536.0f;
-	height2_f= height_f * 0.5f;
 
 	view_matrix= *mat;
 }

@@ -82,13 +82,17 @@ void DrawSpriteEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 	buff+= sizeof(DrawSpriteCall);
 	
 	float inv_z= 1.0f / pos.z;
-	pos.x= ( pos.x*inv_z+ 1.0f ) * float(vid.width)*0.5f;
-	pos.y= ( pos.y*inv_z + 1.0f ) * float(vid.height)*0.5f;
+	pos.x= ( pos.x*inv_z + vertex_projection.x_add ) * vertex_projection.x_mul;
+	pos.y= ( pos.y*inv_z + vertex_projection.y_add ) * vertex_projection.y_mul;
 
+	if( pos.x <= vertex_projection.x_min || pos.x >= vertex_projection.x_max ||
+		pos.y <= vertex_projection.y_min || pos.y >= vertex_projection.y_max )
+		return;
+ 
 	//fixeme - add correction for fov
 	float sprite_radius[2]= { float(sprite->frames[0].width) * inv_z, float(sprite->frames[0].height) * inv_z };
-	sprite_radius[0]*= float(vid.width)/320.0f;
-	sprite_radius[1]*= float(vid.height)/240.0f;
+	sprite_radius[0]*= float(r_newrefdef.width)/320.0f;
+	sprite_radius[1]*= float(r_newrefdef.height)/240.0f;
 
 	((int*)buff)[0]= int( pos.x - sprite_radius[0] );
 	((int*)buff)[1]= int( pos.y - sprite_radius[1] );
@@ -655,11 +659,6 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam
 			return;
 	}
 
-	float width_f= float(vid.width) * 65536.0f;
-	float height_f= float(vid.height) * 65536.0f;
-	float width2_f= width_f * 0.5f;
-	float height2_f= height_f * 0.5f;
-
 	dmdl_t* model= (dmdl_t* )ent->model->extradata;
 
 
@@ -712,9 +711,8 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam
 		tex= R_FindTexture( ent->model->skins[current_texture_frame] );
 	}
 	else
-	{
-		tex= R_FindTexture( (image_t*)NULL );//HACK
-	}
+		tex= R_FindTexture( ent->skin );//for player skins
+	
 	buff+= ComIn_SetTexture( buff, tex );
 	int tex_y_shift= (tex->OriginalSizeY() - tex->SizeY())<<16;
 
@@ -735,8 +733,8 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam
 			*v= *v * result_mat;
 			float inv_z= 1.0f/ v->z;
 			v->z*= 65536.0f;
-			v->x= ( v->x * inv_z + 1.0f ) * width2_f;
-			v->y= ( v->y * inv_z + 1.0f ) * height2_f;
+			v->x= ( v->x * inv_z + vertex_projection.x_add ) * vertex_projection.x_mul;
+			v->y= ( v->y * inv_z + vertex_projection.y_add ) * vertex_projection.y_mul;
 		}
 #define  Z_MIN_SCALED float(PSR_MIN_ZMIN)
 		for( int t= 0; t< model->num_tris; t++, tris++ )
@@ -807,8 +805,8 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam
 				for( int i= 0; i< 3; i++ )
 				{
 					float inv_z= 1.0f/ coord[i].z;
-					coord[i].x= ( coord[i].x * inv_z + 1.0f ) * width2_f;
-					coord[i].y= ( coord[i].y * inv_z + 1.0f ) * height2_f;
+					coord[i].x= ( coord[i].x * inv_z + vertex_projection.x_add ) * vertex_projection.x_mul;
+					coord[i].y= ( coord[i].y * inv_z + vertex_projection.y_add ) * vertex_projection.y_mul;
 					coord[i].z*= 65536.0f;
 				}
 				//bak face culling
@@ -979,12 +977,6 @@ int ClipBeamTriangle( int* triangle_indeces )//returns number of output vertices
 
 void DrawBeam( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam_pos )
 {
-	
-	float width_f= float(vid.width) * 65536.0f;
-	float height_f= float(vid.height) * 65536.0f;
-	float width2_f= width_f * 0.5f;
-	float height2_f= height_f * 0.5f;
-	
 	InitFrustrumClipPlanes( normal_mat, cam_pos );
 
 	GenerateBeamMesh(ent);
@@ -1023,8 +1015,8 @@ void DrawBeam( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam_pos )
 			for(int j= 0; j< 3; j++ )
 			{
 				float inv_z= 1.0f / pos[j].z;
-				pos[j].x= ( pos[j].x * inv_z + 1.0f ) * width2_f;
-				pos[j].y= ( pos[j].y * inv_z + 1.0f ) * height2_f;
+				pos[j].x= ( pos[j].x * inv_z + vertex_projection.x_add ) * vertex_projection.x_mul;
+				pos[j].y= ( pos[j].y * inv_z + vertex_projection.y_add ) * vertex_projection.y_mul;
 			}
 
 			//bak face culling

@@ -24,6 +24,22 @@ typedef struct surfaces_chain_s
 	int surf_count;
 }surfaces_chain_t;
 
+typedef struct projection_rect_s
+{
+	float x_add;
+	float y_add;
+	float x_mul;
+	float y_mul;
+
+	//for particles clipping. valuea ire integet
+	float x_min;
+	float x_max;
+	float y_min;
+	float y_max;
+} projection_rect_t;
+
+extern projection_rect_t vertex_projection;
+
 
 void BuildSurfaceLists(m_Mat4* mat, vec3_t cam_pos );
 void DrawWorldTextureChains();
