@@ -5,8 +5,13 @@
 #include <stdio.h>
 #include <string.h>
 
-typedef unsigned short depth_buffer_t;
+#ifndef DEFINE_FIXED16_T
 typedef int fixed16_t;
+#define DEFINE_FIXED16_T
+#endif
+
+typedef unsigned short depth_buffer_t;
+
 
 #define PSR_PI_6	0.52359877559829887307710723054658f
 #define PSR_PI_4	0.78539816339744830961566084581988f
@@ -77,6 +82,7 @@ typedef int fixed16_t;
 #define PSR_ALIGN_8 __declspec(align(8))
 #define PSR_ALIGN_16 __declspec(align(16))
 //TODO for gcc and other compilers
+
 
 
 #endif//PSR_H

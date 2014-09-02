@@ -11,7 +11,7 @@ typedef struct lightmap_buffer_s
 
 static lightmap_buffer_t lightmap_buffer;
 static lightmap_buffer_t back_lightmap_buffer;
-static int	r_dlightframecount;
+int	r_dlightframecount;
 
 static dlight_t transformed_dlights[MAX_DLIGHTS];//transformed lights( saturation correction )
 
@@ -94,13 +94,13 @@ void R_MarkLights (dlight_t *light, int bit, mnode_t *node)
 	float		dist;
 	msurface_t	*surf;
 	int			i;
-	
+
 	if (node->contents != -1)
 		return;
 
 	splitplane = node->plane;
 	dist = DotProduct (light->origin, splitplane->normal) - splitplane->dist;
-	
+
 //=====
 //PGM
 	i=light->intensity;
@@ -132,7 +132,7 @@ void R_MarkLights (dlight_t *light, int bit, mnode_t *node)
 		R_MarkLights (light, bit, node->children[1]);
 		return;
 	}
-		
+
 // mark the polygons
 	surf = r_worldmodel->surfaces + node->firstsurface;
 	for (i=0 ; i<node->numsurfaces ; i++, surf++)
@@ -169,11 +169,11 @@ void R_PushDlights (model_t *model, const float* lights_transform_mat )
 	ColorCorrectLights(real_lights);
 	TransformLights( (m_Mat4*)lights_transform_mat, real_lights );
 
-	
+
 	r_dlightframecount = r_framecount;
 	for (i=0, l = transformed_dlights ; i<r_newrefdef.num_dlights && i<MAX_DLIGHTS ; i++, l++)
 	{
-		R_MarkLights ( l, 1<<i, 
+		R_MarkLights ( l, 1<<i,
 			model->nodes + model->firstnode);
 	}
 
@@ -346,7 +346,7 @@ void R_SwapLightmapBuffers()
 	lightmap_buffer_t tmp= lightmap_buffer;
 	lightmap_buffer= back_lightmap_buffer;
 	back_lightmap_buffer= tmp;
-	
+
 	lightmap_buffer.current_pos= 0;
 }
 
@@ -489,7 +489,7 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 
 	if (node->contents != -1)
 		return -1;		// didn't hit anything
-	
+
 // calculate mid point
 
 // FIXME: optimize for axial
@@ -497,10 +497,10 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 	front = DotProduct (start, plane->normal) - plane->dist;
 	back = DotProduct (end, plane->normal) - plane->dist;
 	side = front < 0;
-	
+
 	if ( (back < 0) == side)
 		return RecursiveLightPoint (node->children[side], start, end);
-	
+
 	frac = front / (front-back);
 	mid[0] = start[0] + (end[0] - start[0])*frac;
 	mid[1] = start[1] + (end[1] - start[1])*frac;
@@ -508,14 +508,14 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 	if (plane->type < 3)	// axial planes
 		mid[plane->type] = plane->dist;
 
-// go down front side	
+// go down front side
 	r = RecursiveLightPoint (node->children[side], start, mid);
 	if (r >= 0)
 		return r;		// hit something
-		
+
 	if ( (back < 0) == side )
 		return -1;		// didn't hit anuthing
-		
+
 // check for impact on this node
 	VectorCopy (mid, lightspot);
 	lightplane = plane;
@@ -523,20 +523,20 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 	surf = r_worldmodel->surfaces + node->firstsurface;
 	for (i=0 ; i<node->numsurfaces ; i++, surf++)
 	{
-		if (surf->flags&(SURF_DRAWTURB|SURF_DRAWSKY)) 
+		if (surf->flags&(SURF_DRAWTURB|SURF_DRAWSKY))
 			continue;	// no lightmaps
 
 		tex = surf->texinfo;
-		
+
 		s = DotProduct (mid, tex->vecs[0]) + tex->vecs[0][3];
 		t = DotProduct (mid, tex->vecs[1]) + tex->vecs[1][3];
 		if (s < surf->texturemins[0] ||
 		t < surf->texturemins[1])
 			continue;
-		
+
 		ds = s - surf->texturemins[0];
 		dt = t - surf->texturemins[1];
-		
+
 		if ( ds > surf->extents[0] || dt > surf->extents[1] )
 			continue;
 
@@ -562,7 +562,7 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 				{
 					scales = r_newrefdef.lightstyles[surf->styles[maps]].rgb;
 					float swapped_scales[3]= { scales[0], scales[1], scales[2] };
-					
+
 					//clamp negative values
 					if( swapped_scales[0] < 0.0f ) swapped_scales[0]= 0.0f;
 					if( swapped_scales[1] < 0.0f ) swapped_scales[1]= 0.0f;
@@ -579,8 +579,8 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 				else
 				{
 					float l= (
-						r_newrefdef.lightstyles[surf->styles[maps]].rgb[0] + 
-						r_newrefdef.lightstyles[surf->styles[maps]].rgb[1] + 
+						r_newrefdef.lightstyles[surf->styles[maps]].rgb[0] +
+						r_newrefdef.lightstyles[surf->styles[maps]].rgb[1] +
 						r_newrefdef.lightstyles[surf->styles[maps]].rgb[2]  ) * ( 1.0f / (3.0f * 255.0f ) );
 					if( l < 0.0f )
 						continue;
@@ -608,9 +608,9 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 				pointcolor[1]+= l;
 				pointcolor[2]+= l;
 			}*/
-			
+
 		}//if is lightmap
-		
+
 		return 1;
 	}//for surfaces
 
@@ -632,19 +632,19 @@ void R_LightPoint (vec3_t p, vec3_t color)
 	//float		light;
 	//vec3_t		dist;
 	//float		add;
-	
+
 	if (!r_worldmodel->lightdata)
 	{
 		color[0] = color[1] = color[2] = 1.0;
 		return;
 	}
-	
+
 	end[0] = p[0];
 	end[1] = p[1];
 	end[2] = p[2] - 2048;
-	
+
 	r = RecursiveLightPoint (r_worldmodel->nodes, p, end);
-	
+
 	if (r == -1)
 	{
 		//VectorCopy (vec3_origin, color);

@@ -379,6 +379,21 @@ typedef struct surfcache_s
 	byte                            data[4];        // width*height elements
 } surfcache_t;
 
+
+//PANZER cache system
+typedef struct panzer_surf_cache_s
+{
+	image_t* image;
+	int width, height;// size of mip 0. must be power of two
+	int width_log2, height_log2;
+	int walkthrow_number; //number of cache cycle, when surface allocated
+
+	unsigned char* data[4];// 4 - for mips
+	char is_mips[4]; //really, booleans
+
+}panzer_surf_cache_t;
+
+
 // !!! if this is changed, it must be changed in asm_draw.h too !!!
 typedef struct espan_s
 {

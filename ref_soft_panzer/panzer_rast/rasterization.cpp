@@ -8,7 +8,7 @@
 #include "psr_mmx.h"
 #include "rasterization.h"
 
-void* framebuffer_data= NULL;//raw pointer to allocated framebuffer data. 
+void* framebuffer_data= NULL;//raw pointer to allocated framebuffer data.
 unsigned char* screen_buffer= NULL;//main screen color buffer format - RGBA
 unsigned char* back_screen_buffer= NULL;
 depth_buffer_t* depth_buffer= NULL;
@@ -35,7 +35,7 @@ void PRast_Init( int screen_width, int screen_height )
 	depth_buffer_size+= (-depth_buffer_size)&(PSR_FRAMEBUFFER_ALIGNMENT-1);
 
 	framebuffer_data= new char[ 2 * color_buffer_size + depth_buffer_size + PSR_FRAMEBUFFER_ALIGNMENT * 6 ];
-	void* aligned_framebuffer_data= 
+	void* aligned_framebuffer_data=
 		(char*)framebuffer_data + ( (-((int)framebuffer_data)) & (PSR_FRAMEBUFFER_ALIGNMENT-1) );
 
     depth_buffer= (depth_buffer_t*)aligned_framebuffer_data;
@@ -90,7 +90,7 @@ fixed16_t FastSin( fixed16_t x )
 }
 fixed16_t FastCos( fixed16_t x )
 {
-    return sintable[ ( (sintable_size-1) & ( Fixed16MulResultToInt( x, sintable_convertion_k ) ) + (sintable_size/4) ) ];
+    return sintable[ ( (sintable_size-1) & ( Fixed16MulResultToInt( x, sintable_convertion_k ) ) ) + (sintable_size/4) ];
 }
 
 /*
@@ -152,6 +152,17 @@ void SetTexture( const Texture* t )
     current_texture_size_y1= current_texture_size_y-1;
     current_texture_size_x_log2= t->SizeXLog2();
     current_texture_size_y_log2= t->SizeYLog2();
+}
+
+void SetTextureRaw( const unsigned char* data, int size_x_log2, int size_y_log2 )
+{
+	current_texture_data= data;
+	current_texture_size_x= 1<<size_x_log2;
+	current_texture_size_y= 1<<size_y_log2;
+	current_texture_size_x1= current_texture_size_x-1;
+    current_texture_size_y1= current_texture_size_y-1;
+	current_texture_size_x_log2= size_x_log2;
+	current_texture_size_y_log2= size_y_log2;
 }
 
 void SetTextureLod( const Texture* t, int lod )
@@ -495,7 +506,7 @@ inline void LightmapFetchLinearRGBS( fixed16_t u, fixed16_t v, unsigned char* ou
     dy= ( v & 0xFFFF )>>8;
     dx1= 256 - dx;
     dy1= 256 - dy;
- 
+
     int s;
     int s_color[4];
     int mixed_s_color[2];
@@ -581,8 +592,8 @@ void DrawPixelsPalettized( int x, int y, int width, int height, int rows, int co
 	int y_begin= FastIntClampToZero(x);
 	int x_end= FastIntMin( x, screen_size_x );
 	int y_end= FastIntMin( y, screen_size_y );
-	int u0= du * ( x_begin - x ); 
-	int v0= dv * ( x_begin - x ); 
+	int u0= du * ( x_begin - x );
+	int v0= dv * ( x_begin - x );
 
 	for( int y0= y_begin, v= v0; y0< y_end; y0++ , v+=dv )
 	{
@@ -598,7 +609,7 @@ void DrawPixelsPalettized( int x, int y, int width, int height, int rows, int co
 template< int fade_shift >
 void FadeScreen()
 {
-	int fade_and_table[]={ 
+	unsigned int fade_and_table[]={
 		0xFFFFFFFF, 0x7F7F7F7F, 0x3F3F3F3F, 0x1F1F1F1F, 0x0F0F0F0F, 0x07070707, 0x03030303, 0x01010101, 0x00000000 };
 	int fade_and= fade_and_table[ fade_shift ];
 
@@ -666,7 +677,7 @@ void DrawTextureRect( int x, int y, int u0, int v0, int u1, int v1 )
 	}
 }
 
-
+const static int dithering_shift_table[]= { 16384,0, 32768,49152, 49152,32768, 0,16384 };
 
 template<
 enum TextureMode texture_mode,
@@ -692,7 +703,7 @@ void DrawSprite( int x0, int y0, int x1, int y1, fixed16_t sprite_in_depth )
 		v= ( y - y0 ) * dv;
 	}
 
-    if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP 
+    if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP
 		|| texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER_MIPMAP ||  texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP )
         lod= FastIntLog2Clamp0( FastIntMax( du, dv ) >> 16 );
 
@@ -956,8 +967,6 @@ inline void ShadeColorByLightmap( unsigned char* color, unsigned char* lightmap 
 }*/
 
 
-const static int dithering_shift_table[]= { 16384,0, 32768,49152, 49152,32768, 0,16384 };
-
 template<
 enum ColorMode color_mode,
 enum TextureMode texture_mode,
@@ -1004,7 +1013,7 @@ void ScanLines()
             for( int i= 2; i< 4; i++ )
                 line_tc[i]= tc_left[i] + Fixed16Mul( ddx, d_line_tc[i] );
         }
-        if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP 
+        if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP
 			|| texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP || texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER_MIPMAP )
 			line_lod= lod_left + Fixed16Mul( ddx, d_line_lod );
         line_inv_z= inv_z_left + Fixed16Mul( ddx, d_line_inv_z );
@@ -1026,8 +1035,10 @@ void ScanLines()
                 if( z )
                     goto next_pixel;//discard
 			}
-            //scale z to convert to depth buffer format
+           
 			depth_buffer_t depth_z;
+			fixed16_t final_z;
+			//scale z to convert to depth buffer format
 			if( additional_effect_mode == ADDITIONAL_EFFECT_DEPTH_HACK )
 			{
 				depth_z= 65535 - (line_inv_z >> ( PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 + PSR_INV_MIN_ZMIN_INT_LOG2 ) );
@@ -1049,20 +1060,19 @@ void ScanLines()
 				if( depth_test_mode == DEPTH_TEST_NOT_EQUAL )
 					if( depth_z == *depth_p )
 						 goto next_pixel;
-				
+
 			}//if depth test
 
 			 PSR_ALIGN_4 unsigned char color[4];
 #ifdef PSR_FAST_PERSECTIVE
-            fixed16_t final_z;
             {
                 int i= x>>PSR_LINE_SEGMENT_SIZE_LOG2, d= x & ( PSR_LINE_SEGMENT_SIZE-1);
                 int d1= PSR_LINE_SEGMENT_SIZE - d;
                 final_z= ( scanline_z[i] * d1 + scanline_z[i+1] * d )>> PSR_LINE_SEGMENT_SIZE_LOG2;
             }
 #else
-            //fixed16_t final_z= Fixed16Invert( line_inv_z >> PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 );
-			 fixed16_t final_z= Fixed16DepthInvert( line_inv_z );
+            //final_z= Fixed16Invert( line_inv_z >> PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 );
+			final_z= Fixed16DepthInvert( line_inv_z );
 #endif
 
             if( color_mode == COLOR_CONSTANT )
@@ -1084,7 +1094,7 @@ void ScanLines()
 						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
 						TexelFetchNearest( (v+dv)>>16, (u+du)>>16, color );
 					}
-					else 
+					else
 						TexelFetchNearest( Fixed16MulResultToInt( line_tc[0], final_z ),
 										Fixed16MulResultToInt( line_tc[1], final_z ), color );
 				}
@@ -1141,7 +1151,7 @@ void ScanLines()
 						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
 						TexelFetchNearestPlaettized( (v+dv)>>16, (u+du)>>16, color );
 					}
-					else 
+					else
 						TexelFetchNearestPlaettized(
 							Fixed16MulResultToInt( line_tc[0], final_z ),
 							Fixed16MulResultToInt( line_tc[1], final_z ), color );
@@ -1329,7 +1339,7 @@ void ScanLines()
             }// if is blending
             else
                 Byte4Copy( pixels, color );
-            
+
             if( write_depth )
                 *depth_p= depth_z;
 next_pixel:
@@ -1344,7 +1354,7 @@ next_pixel:
             {
                 line_tc[0]+= d_line_tc[0];
                 line_tc[1]+= d_line_tc[1];
-                if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP 
+                if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP
 					|| texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP || texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER_MIPMAP )
                     line_lod+= d_line_lod;
             }
@@ -1361,9 +1371,8 @@ next_pixel:
                 line_tc[2]+= d_line_tc[2];
                 line_tc[3]+= d_line_tc[3];
             }
-//#ifndef PSR_FAST_PERSECTIVE
             line_inv_z+= d_line_inv_z;
-//#endif
+
         }//for x
 
 //next_line:
@@ -1378,7 +1387,7 @@ next_pixel:
         {
             tc_left[0]+= d_tc_left[0];
             tc_left[1]+= d_tc_left[1];
-            if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP 
+            if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP
 			|| texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP || texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER_MIPMAP )
                 lod_left+= d_lod_left;
         }
@@ -1455,7 +1464,7 @@ void CalculateLineGradients()
 		{
 				d_line_tc[0+2]= Fixed16Div( Fixed16Mul( triangle_in_lightmap_tex_coord[0+4], inv_vertex_z[2] ) - Fixed16Mul( triangle_in_lightmap_tex_coord[0+2], inv_vertex_z[1] ), dx );
 				d_line_tc[0+3]= Fixed16Div( Fixed16Mul( triangle_in_lightmap_tex_coord[1+4], inv_vertex_z[2] ) - Fixed16Mul( triangle_in_lightmap_tex_coord[1+2], inv_vertex_z[1] ), dx );
-	        
+
 		}//if use lightmaps
 
 		//shift invert z, becouse delta can be very short
@@ -1491,23 +1500,23 @@ void DrawTriangleUp()
 	y_begin= FastIntClampToZero( (triangle_in_vertex_xy[3]>>16)+1 );
     y_end= FastIntMin( screen_size_y-1, triangle_in_vertex_xy[1]>>16 );
 
-    
+
 	fixed16_t dy= triangle_in_vertex_xy[1] - triangle_in_vertex_xy[3];// triangle height
 	if( dy < 4096 ) dy= 4096;
-    
+
 	fixed16_t ddy= (y_begin<<16) - triangle_in_vertex_xy[3];// distance between triangle begin and lower screen border
 	dx_left= Fixed16Div( triangle_in_vertex_xy[0] - triangle_in_vertex_xy[2], dy );
 	x_left= triangle_in_vertex_xy[2] + Fixed16Mul( ddy, dx_left );
 	dx_right= Fixed16Div( triangle_in_vertex_xy[0] - triangle_in_vertex_xy[4], dy );
     x_right= triangle_in_vertex_xy[4] + Fixed16Mul( ddy, dx_right );
-	
+
 	if( dy < 16384 )
 		dy= 16384<<16;
 
     fixed16_t inv_vertex_z[3];
     for( int i= 0; i< 3; i++ )
 	{
-		
+
         inv_vertex_z[i]= Fixed16Invert( triangle_in_vertex_z[i] );
 		//HACK
 		//inv_vertex_z[i]= Fixed16Invert( FastIntMax( triangle_in_vertex_z[i], PSR_MIN_ZMIN ) );
@@ -1561,7 +1570,7 @@ void DrawTriangleUp()
     inv_z_left= ( inv_vertex_z[1] << PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 ) + Fixed16Mul( d_inv_z_left, ddy );
 
 
-    /*if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP 
+    /*if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP
 		|| texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP || texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER_MIPMAP )
     {
         fixed16_t du_dx, du_dy, dv_dx, dv_dy;
@@ -1658,7 +1667,7 @@ void DrawTriangleDown()
 	y_begin= FastIntClampToZero( (triangle_in_vertex_xy[1]>>16)+1 );
     y_end= FastIntMin( screen_size_y-1, triangle_in_vertex_xy[3]>>16 );
 
-    
+
 	fixed16_t dy= triangle_in_vertex_xy[3] - triangle_in_vertex_xy[1];// triangle height
 	if( dy < 4096 ) dy= 4096;
 	fixed16_t ddy= (y_begin<<16) - triangle_in_vertex_xy[1];// distance between triangle begin and lower screen border
@@ -1668,7 +1677,7 @@ void DrawTriangleDown()
     x_right= triangle_in_vertex_xy[0] + Fixed16Mul( ddy, dx_right );
 	if( dy < 16384 )
 		dy= 16384<<16;
-		
+
     fixed16_t inv_vertex_z[3];
    for( int i= 0; i< 3; i++ )
 	{
@@ -1724,7 +1733,7 @@ void DrawTriangleDown()
     inv_z_left= ( inv_vertex_z[0] << PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 ) + Fixed16Mul( d_inv_z_left, ddy );
 
 
-    /*if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP 
+    /*if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP
 		|| texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP || texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER_MIPMAP )
     {
         fixed16_t du_dx, du_dy, dv_dx, dv_dy;
@@ -1779,7 +1788,7 @@ void DrawTriangleDown()
 
 	ScanLines< color_mode, texture_mode, blending_mode, alpha_test_mode,
 		lighting_mode, lightmap_mode, additional_effect_mode, depth_test_mode, write_depth >();
-	
+
 }//DrawTriangleDown
 
 
@@ -2396,6 +2405,23 @@ void (*DrawWorldTriangleTextureLinearPalettizedTurbulenceBlend)(char*buff)= Draw
 void (*DrawWorldTriangleTextureFakeFilterPalettizedTurbulenceBlend)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_TURBULENCE, CURRENT_DEPTH_TEST_TYPE, true >;
 
+
+//world functions CACHED
+void (*DrawWorldTriangleCachedTextureNearest)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+void (*DrawWorldTriangleCachedTextureLinear)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+void (*DrawWorldTriangleCachedTextureFakeFilter)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+//world functions CACHED blend
+void (*DrawWorldTriangleCachedTextureNearestBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+void (*DrawWorldTriangleCachedTextureLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+void (*DrawWorldTriangleCachedTextureFakeFilterBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+
+
 /* - no lightmaps and with turbulence - do not neeed it
 //world rendering functions without lightmaps
 void (*DrawWorldTriangleTextureNearest)(char*buff)= Draw::DrawTriangleFromBuffer
@@ -2477,11 +2503,11 @@ void (*DrawParticleSpriteNoBlend)(int x0, int y0, int x1, int y1, fixed16_t dept
 
 //sky
 void (*DrawSkyTriangleNearest)( char* buff ) = Draw::DrawTriangleFromBuffer
-<COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true>;
+<COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, false>;
 void (*DrawSkyTriangleLinear)( char* buff ) = Draw::DrawTriangleFromBuffer
-<COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true>;
+<COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, false>;
 void (*DrawSkyTriangleFakeFilter)( char* buff ) = Draw::DrawTriangleFromBuffer
-<COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true>;
+<COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, false>;
 
 void (*DrawWorldSprite)(int x0, int y0, int x1, int y1, fixed16_t depth) =
 Draw::DrawSprite<TEXTURE_NEAREST, BLENDING_AVG, ALPHA_TEST_DISCARD_GREATER_HALF, LIGHTING_NONE, CURRENT_DEPTH_TEST_TYPE, true >;

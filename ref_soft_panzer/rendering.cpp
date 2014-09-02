@@ -30,7 +30,7 @@ qmutex_t frontend_framebuffer_mutex;
 qmutex_t frontend_front_command_buffer_mutex;
 //qmutex_t backend_front_command_buffer_mutex;
 #define FRAMEBUFFER_MUTEX_NAME		"q2_panzer_soft_rast_framebuffer_mutex"
-#define COMMAND_BUFFER_MUTEX_NAME	"q2_panzer_soft_rast_front_command_buffer_mutex" 
+#define COMMAND_BUFFER_MUTEX_NAME	"q2_panzer_soft_rast_front_command_buffer_mutex"
 
 bool need_terminate_backend_thread= true;
 bool use_multithreading= false;
@@ -113,7 +113,7 @@ void DrawChars()
 		unsigned int row= 15 - (back_chars->char_buffer[i]>>4);
 		unsigned int col= back_chars->char_buffer[i]&15;
 		const unsigned char* src= console_tex->GetData() + (col<<(3+2)) + (row<<(3+7+2));
-		
+
 		for( int y= 0; y< 8; y++, dst+=vid.width<<2, src+=128<<2)
 		{
 			if( src[0 +3] < 130 )
@@ -186,7 +186,7 @@ extern "C" void PR_InitRendering()
 	command_buffer.buffer= Com_ResizeCommandBuffer( NULL, 0, 1024*1024*3, &command_buffer.size );
 	back_command_buffer.buffer= Com_ResizeCommandBuffer( NULL, 0, 1024*1024*3, &back_command_buffer.size );
 
-	command_buffer.current_pos= 
+	command_buffer.current_pos=
 		back_command_buffer.current_pos= 0;
 
 	InitParticles();
@@ -246,22 +246,22 @@ extern "C" void PR_SwapCommandBuffers()
 	//DrawCharString( 8, 16, statistic_str );
 
 	//draw chars
-	command_buffer.current_pos+= ComIn_AddUserDefinedFunc( 
+	command_buffer.current_pos+= ComIn_AddUserDefinedFunc(
 			(char*)command_buffer.buffer + command_buffer.current_pos, DrawChars );
 	//swap color channels
-	/*command_buffer.current_pos+= ComIn_SwapRedBlueInColorBuffer( 
+	/*command_buffer.current_pos+= ComIn_SwapRedBlueInColorBuffer(
 				(char*)command_buffer.buffer + command_buffer.current_pos );*/
 
 	//gamma correction
 	if( ( vid_gamma->value < 0.95f || vid_gamma->value > 1.05f ) && !sw_state.hw_gamma_supported )
 	{
-		command_buffer.current_pos+= ComIn_GammaCorrectColorBuffer( 
+		command_buffer.current_pos+= ComIn_GammaCorrectColorBuffer(
 			(char*)command_buffer.buffer + command_buffer.current_pos, sw_state.gammatable );
 	}
 	//mirror framebuffer vertical
 	if( vid_fullscreen->value )
 	{
-		command_buffer.current_pos+= ComIn_MirrorVerticalColorBuffer( 
+		command_buffer.current_pos+= ComIn_MirrorVerticalColorBuffer(
 			(char*)command_buffer.buffer + command_buffer.current_pos );
 	}
 
@@ -298,7 +298,7 @@ extern "C" void PR_EndBufferSwapping()
 	if(use_multithreading)
 	{Sys_MutexUnlock( &frontend_framebuffer_mutex );
 		Sys_MutexUnlock( &frontend_front_command_buffer_mutex );
-		
+
 		if( backend_thread.thread_handle == 0 )
 			backend_thread= Sys_CreateThread( PR_MainBackEndFunc, NULL );
 	}
@@ -313,7 +313,7 @@ extern "C" void PR_BeginFrame()
 }
 
 extern "C" void PANZER_DrawStretchPic(int x, int y, int w, int h, char *name)
-{	
+{
 	int call_size= 48;
 	if( command_buffer.current_pos + call_size > command_buffer.size )
 		command_buffer.buffer=
@@ -328,7 +328,7 @@ extern "C" void PANZER_DrawStretchPic(int x, int y, int w, int h, char *name)
 
 	Texture* tex= R_FindTexture( img );
 	command_buffer.current_pos+= ComIn_SetTexture( (char*)command_buffer.buffer + command_buffer.current_pos, tex );
-	
+
 	int* b2= (int*)((char*)command_buffer.buffer + command_buffer.current_pos );
 	b2[0]= COMMAND_DRAW_SPRITE;
 	command_buffer.current_pos+= sizeof(int);
@@ -336,7 +336,7 @@ extern "C" void PANZER_DrawStretchPic(int x, int y, int w, int h, char *name)
 	DrawSpriteCall* call= (DrawSpriteCall*) ( (char*)command_buffer.buffer + command_buffer.current_pos );
 	if( img->transparent )
 		call->DrawSpriteFunc= DrawStretchTextureRGBA;
-	else 
+	else
 		call->DrawSpriteFunc= DrawStretchTextureRGBANoAlphaTest;
 	call->sprite_count= 1;
 	command_buffer.current_pos+= sizeof(DrawSpriteCall);
@@ -368,7 +368,7 @@ extern "C" void PANZER_DrawPic(int x, int y, char *name)
 
 	Texture* tex= R_FindTexture( img );
 	command_buffer.current_pos+= ComIn_SetTexture( (char*)command_buffer.buffer + command_buffer.current_pos, tex );
-	
+
 	int* b2= (int*)((char*)command_buffer.buffer + command_buffer.current_pos );
 	b2[0]= COMMAND_DRAW_SPRITE;
 	command_buffer.current_pos+= sizeof(int);
@@ -376,7 +376,7 @@ extern "C" void PANZER_DrawPic(int x, int y, char *name)
 	DrawSpriteCall* call= (DrawSpriteCall*) ( (char*)command_buffer.buffer + command_buffer.current_pos );
 	if( img->transparent )
 		call->DrawSpriteFunc= DrawStretchTextureRGBA;
-	else 
+	else
 		call->DrawSpriteFunc= DrawStretchTextureRGBANoAlphaTest;
 	call->sprite_count= 1;
 	command_buffer.current_pos+= sizeof(DrawSpriteCall);
@@ -434,6 +434,7 @@ void DrawCharString( int x, int y, const char* str )
 
 long long unsigned int GetProcessorTickCount()
 {
+	/*
 	unsigned long long int result;
 	unsigned long long int* result_ptr= &result;
 	__asm
@@ -443,7 +444,8 @@ long long unsigned int GetProcessorTickCount()
 		mov dword ptr[ecx], eax
 		mov dword ptr[ecx+4], edx
 	}
-	return result;
+	return result;*/
+	return 42;
 }
 
 
@@ -613,7 +615,7 @@ extern "C" void PANZER_DrawFill(int x, int y, int w, int h, int c)
 	call->DrawSpriteFunc= DrawFill;
 	buff+= sizeof(DrawSpriteCall);
 	command_buffer.current_pos+= sizeof(DrawSpriteCall);
-	
+
 	((int*)buff)[0]= x;
 	((int*)buff)[1]= vid.height-(y+h);
 	((int*)buff)[2]= x+w;
@@ -635,7 +637,7 @@ void InitParticles()
 
 void DrawParticles( const m_Mat4* mat, particle_t* particles, int count, float fov_rad )
 {
-	int call_size = 
+	int call_size =
 		 8//set color call
 		+sizeof(DrawSpriteCall)//call struct
 		+5*sizeof(int);//parameters
@@ -792,8 +794,8 @@ void DrawUnderwater()
 	for( int i= 0; i< 3; i++ )
 		fog_color_scaled[i]= int( 255.0f * ( prev_fog_color[i] > 1.0f ? 1.0f : prev_fog_color[i] ) );
 
-	
-	command_buffer.current_pos+= 
+
+	command_buffer.current_pos+=
 		ComIn_AddExponentialFog( (char*)command_buffer.buffer + command_buffer.current_pos, 6.0f, fog_color_scaled );
 
 	underwater_frame= r_framecount;
@@ -806,7 +808,7 @@ void DrawFullscreenBlend()
 		ColorByteSwap( blend_color );
 
 	if( blend_color[3] > 4 )
-		command_buffer.current_pos+= ComIn_AlphaBlendColorBuffer( 
+		command_buffer.current_pos+= ComIn_AlphaBlendColorBuffer(
 			(char*)command_buffer.buffer + command_buffer.current_pos,
 			blend_color);
 }
@@ -832,7 +834,7 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 
 
 	//clear depth buffer
-	command_buffer.current_pos+= ComIn_ClearDepthBuffer( 
+	command_buffer.current_pos+= ComIn_ClearDepthBuffer(
 		(char*)command_buffer.buffer + command_buffer.current_pos, 0x0000 );
 
 	//clear color buffer ( if need )
@@ -876,12 +878,12 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 	pers[5]= 1.0f / tan( fd->fov_y * to_rad * 0.5f );
 
 	sky_mat= scale * rot_z * rot_x * rot_y * basis_change * pers;
-	
+
 
 	result= shift * scale * rot_z * rot_x * rot_y * basis_change * pers;
 	SetFov(fd->fov_y * to_rad);
 
-	
+
 	rot_x.RotateX( -fd->viewangles[0] * to_rad );
 	rot_z.RotateZ( -(fd->viewangles[1]  + 90.0f )* to_rad );
 	rot_y.RotateY( -fd->viewangles[2] * to_rad );

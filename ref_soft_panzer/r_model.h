@@ -104,7 +104,10 @@ typedef struct msurface_s
 	int			numedges;	// are backwards edges
 	
 // surface generation data
-	struct surfcache_s	*cachespots[MIPLEVELS];
+	//struct surfcache_s	*cachespots[MIPLEVELS];
+	//PANZER - add pointer to own cache struct
+	struct panzer_surf_cache_s* cache;
+	long long unsigned int surf_cache_walkthrough_number;
 
 	short		texturemins[2];
 	short		extents[2];

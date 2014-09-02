@@ -6,7 +6,6 @@ inline fixed16_t Fixed16Round( fixed16_t x )
 {
 	return (x&0xFFFF8000) + (x&0x00008000);
 }
-
 inline fixed16_t Fixed16Floor( fixed16_t x )
 {
 	return x&0xFFFF0000;
@@ -328,6 +327,20 @@ inline fixed16_t Fixed16Vec3DivSqr( fixed16_t x, fixed16_t* v )
 	fixed16_t result= Fixed16Mul( v[0], v[0] ) + Fixed16Mul( v[1], v[1] ) + Fixed16Mul( v[2], v[2] );
 	return Fixed16Div( x, result );
 #endif
+}
+
+
+inline int Log2Ceil( int x )
+{
+	int i= 0;
+	if( x == 0 )
+		return 0;
+	x--;
+	while( x>0 )
+	{
+		x>>=1;i++;
+	}
+	return i;
 }
 
 #endif//FIXED_H

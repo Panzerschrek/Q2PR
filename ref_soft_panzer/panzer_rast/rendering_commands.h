@@ -25,6 +25,7 @@ enum RenderingCommands
 	//texture and lightmap change
 	COMMAND_SET_TEXTURE,
 	COMMAND_SET_TEXTURE_LOD,
+	COMMAND_SET_TEXTURE_RAW,
 	COMMAND_SET_TEXTURE_PALETTE,
 	COMMAND_SET_TEXTURE_PALETTE_RAW,
 	COMMAND_SET_LIGHTMAP,
@@ -104,6 +105,7 @@ unsigned int ComIn_SetConstantTime( void* command_buffer, fixed16_t time );
 
 unsigned int ComIn_SetTexture( void* command_buffer, const Texture* texture );
 unsigned int ComIn_SetTextureLod( void* command_buffer, const Texture* texture, int lod );
+unsigned int ComIn_SetTextureRaw( void* command_buffer, const unsigned char* data, int size_x_log2, int size_y_log2 ); 
 unsigned int ComIn_SetTexturePalette( void* command_buffer, const Texture* texture );
 unsigned int ComIn_SetTexturePaletteRaw( void* command_buffer, const  unsigned char* palette );
 unsigned int ComIn_SetLightmap( void* command_buffer, const unsigned char* lightmap_data, int width );

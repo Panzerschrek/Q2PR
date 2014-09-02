@@ -701,6 +701,8 @@ void Mod_LoadFaces (lump_t *l)
 
 		out->texinfo = loadmodel->texinfo + LittleShort (in->texinfo);
 
+		out->cache= NULL;
+
 		CalcSurfaceExtents (out);
 				
 	// lighting info is converted from 24 bit on disk to 8 bit or other

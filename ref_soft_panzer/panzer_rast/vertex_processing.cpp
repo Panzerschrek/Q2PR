@@ -33,7 +33,8 @@ struct Vertex
 	char normal[3];
 };
 
-
+//UNFINISHED
+#if 0
 
 int clip_vertices_array[ 32 * sizeof(Vertex)/sizeof(int) ];
 int clip_nev_vertex_count;
@@ -42,22 +43,22 @@ template< int normal_x, int normal_y,
 enum ColorMode color_mode,
 enum TextureMode texture_mode,
 enum LightingMode lighting_mode,
-enum AdditionalLightingMode additional_effect_mode >
+enum AdditionalEffectMode additional_effect_mode >
 //input vertex - array of ints
 int ClipTriangle( int point_x, int point_y,
 	unsigned int** in_triangles, unsigned int** out_new_triangles,
 	int in_triangle_count )
 {
 	 const int vertex_size= sizeof(int)*3 + ( (color_mode==COLOR_PER_VERTEX)? 4 : 0 ) +
-                           ( (texture_mode==TEXTURE_NONE)? 0 : 2*sizeof(int) ) + 
+                           ( (texture_mode==TEXTURE_NONE)? 0 : 2*sizeof(int) ) +
 						   ( (lighting_mode==LIGHTING_FROM_LIGHTMAP)? 2*sizeof(int) : 0 ) +
                            ( (lighting_mode==LIGHTING_PER_VERTEX)? sizeof(int) : 0 );
 	int dot[3];//dst from vertex to clip line
 	for(int i= 0; i< 3; i++ )
-		dot[i]= 
-			(in_triangles_indeces[i][0] - point_x) * normal_x + 
+		dot[i]=
+			(in_triangles_indeces[i][0] - point_x) * normal_x +
 			(in_triangles_indeces[i][1] - point_y) * normal_y;
-	
+
 	int vert_pos_bit_vector= int(dot[0]>0) | (int(dot[1]<0)<<1) | (int(dot[2]>0)<<2);
 
 	if( vert_pos_bit_vector == (1+2+4) )
@@ -65,6 +66,7 @@ int ClipTriangle( int point_x, int point_y,
 	if( vert_pos_bit_vector == 0 )
 		return 0;
 }
+#endif
 
 fixed16_t triangle_in_vertex_xy[ 2 * 3 ];//screen space x and y
 fixed16_t triangle_in_vertex_z[3];//screen space z
@@ -72,6 +74,8 @@ PSR_ALIGN_4 unsigned char triangle_in_color[ 3 * 4 ];
 int triangle_in_light[3];
 fixed16_t triangle_in_tex_coord[ 2 * 3 ];
 fixed16_t triangle_in_lightmap_tex_coord[ 2 * 3 ];
+
+
 
 /*
 this function bisect triangle, sort vertices in right order and put result to buffer
@@ -84,7 +88,7 @@ enum AdditionalEffectMode additional_effect_mode >
 int DrawTriangleToBuffer( char* buff )//returns 0, if no output triangles
 {
     const int vertex_size= sizeof(int)*3 + ( (color_mode==COLOR_PER_VERTEX)? 4 : 0 ) +
-                           ( (texture_mode==TEXTURE_NONE)? 0 : 2*sizeof(int) ) + 
+                           ( (texture_mode==TEXTURE_NONE)? 0 : 2*sizeof(int) ) +
 						   ( (lighting_mode==LIGHTING_FROM_LIGHTMAP)? 2*sizeof(int) : 0 ) +
                            ( (lighting_mode==LIGHTING_PER_VERTEX)? sizeof(int) : 0 ) +
 						   ( (lighting_mode==LIGHTING_PER_VERTEX_COLORED) ? 4 : 0 );
@@ -139,7 +143,7 @@ int DrawTriangleToBuffer( char* buff )//returns 0, if no output triangles
 	if( div < 4 ) return 0;//triangle is so small
 	fixed16_t k0= Fixed16Div( triangle_in_vertex_xy[ vertex_indeces_from_upper[0]*2 + 1 ] - triangle_in_vertex_xy[ vertex_indeces_from_upper[1]*2 + 1 ], div );
     fixed16_t k1= (1<<16) - k0;
-	fixed16_t up_down_line_x= 
+	fixed16_t up_down_line_x=
 		Fixed16Mul( triangle_in_vertex_xy[ vertex_indeces_from_upper[0]<<1 ], k1 ) +
 		Fixed16Mul( triangle_in_vertex_xy[ vertex_indeces_from_upper[2]<<1 ], k0 );
 
@@ -184,7 +188,7 @@ int DrawTriangleToBuffer( char* buff )//returns 0, if no output triangles
     ((int*)v)[2]= Fixed16Invert
                   ( Fixed16Mul( triangle_in_vertex_inv_z[ vertex_indeces_from_upper[0] ], k1 ) +
                     Fixed16Mul( triangle_in_vertex_inv_z[ vertex_indeces_from_upper[2] ], k0 ) );//interpolate inv_z
-					
+
     final_z= ((int*)v)[2];
     v+= 3 * sizeof(int);
     if( color_mode == COLOR_PER_VERTEX || lighting_mode == LIGHTING_PER_VERTEX_COLORED )
@@ -400,7 +404,7 @@ struct WorldVertexAttrib
 };
 
 
-int DrawClipWorldTriangleToBuffer( 
+int DrawClipWorldTriangleToBuffer(
 const float* v,//9 floats
 WorldVertexAttrib* attribs )//3 * int_attribs
 {
@@ -419,17 +423,17 @@ WorldVertexAttrib* attribs )//3 * int_attribs
 
 		float interp;
 		const float inv_zmin= 1.0f / PSR_MIN_ZMIN_FLOAT;
-		interp= v[ cull_passed_vertices[0]*3 ] * cull_new_vertices_interpolation_k[0] + 
+		interp= v[ cull_passed_vertices[0]*3 ] * cull_new_vertices_interpolation_k[0] +
 				v[ cull_lost_vertices[0]*3 ] * inv_interpolation_k;
 		tmp_v[0]=  ( inv_zmin * interp + 1.0f ) * width2_f;//interpolate x0
-		interp= v[ cull_passed_vertices[0]*3+1 ] * cull_new_vertices_interpolation_k[0] + 
+		interp= v[ cull_passed_vertices[0]*3+1 ] * cull_new_vertices_interpolation_k[0] +
 				v[ cull_lost_vertices[0]*3+1 ] * inv_interpolation_k;
 		tmp_v[1]=  ( inv_zmin * interp + 1.0f ) * height2_f;//interpolate y0
 
-		interp= v[ cull_passed_vertices[0]*3 ] * cull_new_vertices_interpolation_k[0] + 
+		interp= v[ cull_passed_vertices[0]*3 ] * cull_new_vertices_interpolation_k[0] +
 				v[ cull_lost_vertices[1]*3 ] * inv_interpolation_k;
 		tmp_v[3]=  ( inv_zmin * interp + 1.0f ) * width2_f;//interpolate x1
-		interp= v[ cull_passed_vertices[0]*3+1 ] * cull_new_vertices_interpolation_k[0] + 
+		interp= v[ cull_passed_vertices[0]*3+1 ] * cull_new_vertices_interpolation_k[0] +
 				v[ cull_lost_vertices[1]*3+1 ] * inv_interpolation_k;
 		tmp_v[4]=  ( inv_zmin * interp + 1.0f ) * height2_f;//interpolate y1
 
@@ -437,16 +441,16 @@ WorldVertexAttrib* attribs )//3 * int_attribs
 
 		int unmodifed_vertex_k= cull_passed_vertices[0]*3;
 		float inv_interp_z= 1.0f / v [unmodifed_vertex_k+2];
-		tmp_v[6]= (v[unmodifed_vertex_k*3] * inv_interp_z +1.0f) * width2_f; 
-		tmp_v[7]= (v[unmodifed_vertex_k+1] * inv_interp_z +1.0f) * height2_f; 
-		tmp_v[8]=  v[unmodifed_vertex_k+2]; 
+		tmp_v[6]= (v[unmodifed_vertex_k*3] * inv_interp_z +1.0f) * width2_f;
+		tmp_v[7]= (v[unmodifed_vertex_k+1] * inv_interp_z +1.0f) * height2_f;
+		tmp_v[8]=  v[unmodifed_vertex_k+2];
 
 		for( int i= 0; i< 4; i++ )
 		{
-			interp= float(attribs[ cull_passed_vertices[0] ].tc[i]) * cull_new_vertices_interpolation_k[0] + 
+			interp= float(attribs[ cull_passed_vertices[0] ].tc[i]) * cull_new_vertices_interpolation_k[0] +
 					float(attribs[ cull_lost_vertices[0] ].tc[i]) * inv_interpolation_k;
 			tmp_attrib[0].tc[i]= fixed16_t(interp);
-			interp= float(attribs[ cull_passed_vertices[0] ].tc[i]) * cull_new_vertices_interpolation_k[0] + 
+			interp= float(attribs[ cull_passed_vertices[0] ].tc[i]) * cull_new_vertices_interpolation_k[0] +
 					float(attribs[ cull_lost_vertices[1] ].tc[i]) * inv_interpolation_k;
 			tmp_attrib[1].tc[i]= fixed16_t(interp);
 
@@ -487,6 +491,9 @@ void DrawSpriteToBuffer( char* buff, int x0, int y0, int x1, int y1, fixed16_t d
 int (*DrawWorldTriangleToBuffer)(char* buff)= VertexProcessing::DrawTriangleToBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_NEAREST, LIGHTING_FROM_LIGHTMAP, ADDITIONAL_EFFECT_NONE >;
 int (*DrawWorldTriangleNoLightmapToBuffer)(char* buff)= VertexProcessing::DrawTriangleToBuffer
+< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, LIGHTING_NONE, ADDITIONAL_EFFECT_NONE >;
+
+int (*DrawWorldCachedTriangleToBuffer)(char* buff)= VertexProcessing::DrawTriangleToBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_NEAREST, LIGHTING_NONE, ADDITIONAL_EFFECT_NONE >;
 
 

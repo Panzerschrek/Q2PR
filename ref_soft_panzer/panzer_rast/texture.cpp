@@ -4,19 +4,6 @@
 #include "fast_math.h"
 
 
-int Log2Ceil( int x )
-{
-	int i= 0;
-	if( x == 0 )
-		return 0;
-	x--;
-	while( x>0 )
-	{
-		x>>=1;i++;
-	}
-	return i;
-}
-
 
 Texture::Texture():
 size_x(0), size_y(0), size_x_log2(-1), size_y_log2(-1), original_size_x(0), original_size_y(0),
@@ -60,7 +47,7 @@ void Texture::Create( int width, int height, bool palettized, const unsigned cha
 		//this->palette= (unsigned char*) malloc( 1024 + 4 * 256 );
 		memcpy( this->palette, pal, 4 * 256 );
 	}
-	
+
 	lods_data[0]= this->data;
 	int i;
 	for( i= 1; i< size_x_log2 && i< size_y_log2; i++ )
@@ -171,7 +158,7 @@ void Texture::RGB2RGBS( int sx, int sy, unsigned char* in_out_data )
 unsigned char Texture::FindNearestColorInPalette( unsigned char* color )
 {
 	unsigned char nearest_color= 0;
-	int min_delta= 
+	int min_delta=
 		FastIntAbs( color[0] - palette[0] ) + FastIntAbs( color[1] - palette[1] ) + FastIntAbs( color[2] - palette[2] );
 	for( int i= 1, j=4; i< 256; i++, j+=4 )//scan all palette
 	{
@@ -268,7 +255,7 @@ void Texture::ResizeToNearestPOTCeil( const unsigned char* in_data, ResizeMode r
 					out_color[2]= ( mixed_colors[2] * dy1 + mixed_colors[6] * dy ) >> 16;
 					out_color[3]= ( mixed_colors[3] * dy1 + mixed_colors[7] * dy ) >> 16;
 					//nearest filter
-					/*((int*)data)[ x + (y<<size_x_log2) ]= 
+					/*((int*)data)[ x + (y<<size_x_log2) ]=
 					((int*)in_data)[ ((x*x2x_new)>>16) + ((y*y2y_new)>>16) * original_size_x ];*/
 				}
 		}//if stretch resize
@@ -277,7 +264,7 @@ void Texture::ResizeToNearestPOTCeil( const unsigned char* in_data, ResizeMode r
 			for( int y= 0; y< original_size_y; y++ )
 				for( int x= 0; x< original_size_x; x++ )
 				{
-					((int*)data)[ x + (y<<size_x_log2) ]= 
+					((int*)data)[ x + (y<<size_x_log2) ]=
 						((int*)in_data)[ x + y * original_size_x ];
 				}
 
@@ -308,7 +295,7 @@ void Texture::ResizeToNearestPOTCeil( const unsigned char* in_data, ResizeMode r
 		{
 			for( int y= 0; y< size_y; y++ )
 				for( int x= 0; x< size_x; x++ )
-						data[ x + (y<<size_x_log2) ]= 
+						data[ x + (y<<size_x_log2) ]=
 						in_data[ ((x*x2x_new)>>16) + ((y*y2y_new)>>16) * original_size_x ];
 		}
 		else
@@ -401,7 +388,7 @@ int Texture::LoadTexturePCX( const char* filename )
 	size_y= pcx_header.ymax + 1 - pcx_header.ymin;
 
 	data= new unsigned char[ size_x * size_y ];
-	
+
 	int in_data_size= file_len  - 256 * 3 - sizeof(pcx_t) + ( ( &pcx_header.data ) - ((unsigned char*)&pcx_header) );
 	unsigned char* tmp_data= new unsigned char[ in_data_size ];
 	fread( tmp_data, in_data_size, 1, f );
@@ -558,7 +545,7 @@ int Texture::Load( const char* file_name )
 		if(LoadTexturePCX( file_name ) )
 			return 1;
 	}
-	
+
 
 	size_x_log2= FastIntLog2( size_x );
 	size_y_log2= FastIntLog2( size_y );
@@ -588,7 +575,7 @@ int Texture::Load( const char* file_name )
 void Texture::Convert2GRBS()
 {
 	for( int i= 0; i<= max_lod; i++ )
-		RGB2RGBS( size_x>>i, size_y>>i, lods_data[i] ); 
+		RGB2RGBS( size_x>>i, size_y>>i, lods_data[i] );
 }
 
 void Texture::Convert2RGBAFromPlaettized()
@@ -615,7 +602,7 @@ void Texture::Convert2RGBAFromPlaettized()
 	delete[] palette;
 	palette= NULL;
 	is_palettized_texture= false;
-	
+
 }
 
 void Texture::SetColorKeyToAlpha( const unsigned char* color_key, unsigned char alpha )

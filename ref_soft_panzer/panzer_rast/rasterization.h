@@ -89,6 +89,16 @@ extern void (*DrawWorldTriangleTextureNearestPalettizedTurbulenceBlend)(char*buf
 extern void (*DrawWorldTriangleTextureLinearPalettizedTurbulenceBlend)(char*buff);
 extern void (*DrawWorldTriangleTextureFakeFilterPalettizedTurbulenceBlend)(char*buff);
 
+
+//world CAHCED functions
+extern int (*DrawWorldCachedTriangleToBuffer)( char* buff );
+
+extern void (*DrawWorldTriangleCachedTextureNearest)(char*buff);
+extern void (*DrawWorldTriangleCachedTextureLinear)(char*buff);
+extern void (*DrawWorldTriangleCachedTextureFakeFilter)(char*buff);
+extern void (*DrawWorldTriangleCachedTextureNearestBlend)(char*buff);
+extern void (*DrawWorldTriangleCachedTextureLinearBlend)(char*buff);
+extern void (*DrawWorldTriangleCachedTextureFakeFilterBlend)(char*buff);
 /*
 //world rendering functions without lightmaps
 extern void (*DrawWorldTriangleTextureNearest)(char*buff);

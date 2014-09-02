@@ -19,6 +19,7 @@ void SetConstantTime( fixed16_t time );
 
 void SetTexture( const Texture* t );
 void SetTextureLod( const Texture* t, int lod );
+void SetTextureRaw( const unsigned char* data, int size_x_log2, int size_y_log2 );
 void SetTexturePalette( const Texture* t );
 void SetTexturePaletteRaw( const unsigned char* palette );
 void SetLightmap( const unsigned char* lightmap_data, int width );
@@ -140,6 +141,21 @@ unsigned int ComIn_SetTextureLod( void* command_buffer, const Texture* texture, 
 	*((const Texture**)command_buffer)= texture;
 	return sizeof(Texture*) + sizeof(int)*2;
 }
+
+unsigned int ComIn_SetTextureRaw( void* command_buffer, const unsigned char* data, int size_x_log2, int size_y_log2 )
+{
+	((int*)command_buffer)[0]= COMMAND_SET_TEXTURE_RAW;
+	command_buffer= ( (int*)command_buffer ) + 1;
+
+	*((const unsigned char**)command_buffer )= data;
+	command_buffer= ((char*)command_buffer ) + sizeof(const unsigned char*);
+
+	((short*)command_buffer)[0]= size_x_log2;
+	((short*)command_buffer)[1]= size_y_log2;
+
+	return sizeof(int) + sizeof(const unsigned char*) + sizeof(short)*2;
+}
+
 unsigned int ComIn_SetTexturePalette( void* command_buffer, const Texture* texture )
 {
 	*((int*)command_buffer)= COMMAND_SET_TEXTURE_PALETTE;
@@ -263,6 +279,17 @@ unsigned int ComOut_SetTextureLod( const void* command_buffer )
 	Draw::SetTextureLod( *((Texture**)command_buffer), lod );
 	return sizeof(Texture*) + sizeof(int);
 }
+
+unsigned int ComOut_SetTextureRaw( const void* command_buffer )
+{
+	const unsigned char* data= *((const unsigned char**)command_buffer);
+	command_buffer= ((char*)command_buffer) + sizeof(const unsigned char*);
+
+	Draw::SetTextureRaw( data, ((short*)command_buffer)[0], ((short*)command_buffer)[1] );
+
+	return sizeof(const unsigned char*) + sizeof(short)*2;
+}
+
 unsigned int ComOut_SetTexturePalette( const void* command_buffer )
 {
 	Draw::SetTexturePalette( *((Texture**)command_buffer) );
@@ -371,6 +398,7 @@ ComOut_SetConstantTime,
 
 ComOut_SetTexture,
 ComOut_SetTextureLod,
+ComOut_SetTextureRaw,
 ComOut_SetTexturePalette,
 ComOut_SetTexturePaletteRaw,
 ComOut_SetLightmap,

@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "rendering.h"
 #include "r_light.h"
 #include "panzer_rast/rasterization.h"
+#include "r_surf.h"
 
 extern void PR_BeginFrame();
 extern void PR_SwapCommandBuffers();
@@ -444,6 +445,8 @@ void PANZER_Shutdown(void)
 	PR_ShutdownRendering();
 	PRast_Shutdown();
 	SWimp_Shutdown();
+
+	ShutdownSurfaceCache();
 }
 void PANZER_BeginRegistration(char *map)
 {
@@ -680,6 +683,8 @@ qboolean PANZER_Init ( void *hinstance, void *wndproc )
 	PANZER_BeginFrame( 0.0f );
 	
 	ri.Con_Printf (PRINT_ALL, "panzer_ref_soft version: "REF_VERSION"\n");
+
+	InitSurfaceCache();
 
 	return true;
 }

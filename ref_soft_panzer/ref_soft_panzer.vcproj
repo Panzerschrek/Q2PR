@@ -655,6 +655,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\r_surf.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\r_world_rendering.cpp"
 				>
 			</File>
@@ -914,6 +918,10 @@
 			</File>
 			<File
 				RelativePath=".\r_model_rendering.h"
+				>
+			</File>
+			<File
+				RelativePath=".\r_surf.h"
 				>
 			</File>
 			<File

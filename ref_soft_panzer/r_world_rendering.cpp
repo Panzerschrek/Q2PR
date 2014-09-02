@@ -1,5 +1,6 @@
 #include "r_world_rendering.h"
 #include "panzer_rast/fast_math.h"
+#include "r_surf.h"
 
 extern "C" mleaf_t *Mod_PointInLeaf (vec3_t p, model_t *model);
 extern "C" void R_MarkLeaves (void);
@@ -130,14 +131,14 @@ triangle_draw_func_t GetWorldDrawFunc( int texture_mode, bool is_blending )
 		x= 1;
 	else if( texture_mode == TEXTURE_FAKE_FILTER )
 		x= 2;
-	else 
+	else
 		x= 0;
 
 	if( strcmp( r_lightmap_mode->string, "lightmap_linear_rgbs" ) == 0 )
 		y= 0;
 	else if( strcmp( r_lightmap_mode->string, "lightmap_linear_colored" ) == 0 )
 		y= 1;
-	else 
+	else
 		y= 2;
 
 	if( r_palettized_textures->value )
@@ -326,7 +327,7 @@ int ClipFaceByPlane( int vertex_count, mplane_t* plane )//returns new vertex cou
 		int v0_ind= splitted_edge[i];
 		int v1_ind= splitted_edge[i]+1; if( v1_ind == vertex_count ) v1_ind= 0;
 		float* v0= surface_vertices[v0_ind]->position, *v1= surface_vertices[v1_ind]->position;
-		
+
 		float k0= fabsf( DotProduct(v0,normal) - plane->dist );
 		float k1= fabsf( DotProduct(v1,normal) - plane->dist );
 		float inv_dst_sum= 1.0f / ( k0 + k1 );
@@ -356,17 +357,17 @@ int ClipFaceByPlane( int vertex_count, mplane_t* plane )//returns new vertex cou
 		surface_vertices[1]= new_v[0];
 		int new_vertex_count= vertex_count - discarded_vertex_count + 2;
 		for( int i= 2, j= splitted_edge[0]+1; i < new_vertex_count; i++, j++ )
-		{	
+		{
 			surface_vertices[i]= tmp_vertices[j%vertex_count];
 		}
 		return new_vertex_count;
-	}	
+	}
 	else//discard one vertex
 	{
 		int discarded_v_ind= splitted_edge[0];
 		for( int i= vertex_count; i> discarded_v_ind; i-- )
 			surface_vertices[i]= surface_vertices[i-1];
-		
+
 		surface_vertices[discarded_v_ind  ]= new_v[1];
 		surface_vertices[discarded_v_ind+1]= new_v[0];
 		return vertex_count + 1;
@@ -486,14 +487,17 @@ int DrawWorldSurface( msurface_t* surf, triangle_draw_func_t near_draw_func, tri
 	}
 
 	//select texture and mip level
-	int mip_level= GetSurfaceMipLevel( surf, final_vertex_count );
-	Texture* tex= R_FindTexture( texinfo->image );
+	int mip_level;
+	mip_level= GetSurfaceMipLevel( surf, final_vertex_count );
+	Texture* tex;
+	tex= R_FindTexture( texinfo->image );
 	if( mip_level >= MIPLEVELS ) mip_level= MIPLEVELS-1;
-	command_buffer.current_pos += 
+	command_buffer.current_pos +=
 	ComIn_SetTextureLod( command_buffer.current_pos + (char*)command_buffer.buffer, tex, mip_level );
 
-	bool no_lightmaps= (surf->flags&SURF_DRAWTURB)!= 0 || (surf->texinfo->flags&SURF_WARP)!= 0;
 put_draw_command:
+	bool no_lightmaps= (surf->flags&SURF_DRAWTURB)!= 0 || (surf->texinfo->flags&SURF_WARP)!= 0;
+
 	char* buff= (char*) command_buffer.buffer;
 	buff+= command_buffer.current_pos;
 	char* buff0= buff;
@@ -561,6 +565,109 @@ put_draw_command:
 }
 
 
+
+
+//returns number of triangles
+int DrawWorldCachedSurface( msurface_t* surf, triangle_draw_func_t near_draw_func, triangle_draw_func_t far_draw_func, mtexinfo_t* texinfo, fixed16_t tex_coord_shift )
+{
+	int triangle_count= 0;
+
+	fixed16_t tc_u[max_poly_vertices];
+	fixed16_t tc_v[max_poly_vertices];
+	
+	if( surf->numedges > max_poly_vertices )
+		surf->numedges= max_poly_vertices;
+	//get vertices
+	for(int e= 0; e< surf->numedges; e++ )
+	{
+		int ind= r_worldmodel->surfedges[e+surf->firstedge];
+		if( ind > 0 )
+			surface_vertices[e]= r_worldmodel->vertexes + r_worldmodel->edges[ind].v[0];
+		else
+			surface_vertices[e]= r_worldmodel->vertexes + r_worldmodel->edges[-ind].v[1];
+	}
+	int final_vertex_count= ClipFace(surf->numedges);
+	if( final_vertex_count == 0 )
+		goto put_draw_command;
+	for(int e= 0; e< final_vertex_count; e++ )
+	{
+		tc_u[e]= fixed16_t( (DotProduct( surface_vertices[e]->position, surf->texinfo->vecs[0] )
+			+ surf->texinfo->vecs[0][3])*65536.0f ) - (surf->texturemins[0]<<16);
+		tc_v[e]= fixed16_t( (DotProduct( surface_vertices[e]->position, surf->texinfo->vecs[1] )
+			+ surf->texinfo->vecs[1][3])*65536.0f ) - (surf->texturemins[1]<<16);
+
+		surface_final_vertices[e]= *((m_Vec3*)surface_vertices[e]->position) * view_matrix;
+		float inv_z= 1.0f / surface_final_vertices[e].z;
+		surface_final_vertices[e].x= (surface_final_vertices[e].x * inv_z + vertex_projection.x_add ) * vertex_projection.x_mul;
+		surface_final_vertices[e].y= (surface_final_vertices[e].y * inv_z + vertex_projection.y_add ) * vertex_projection.y_mul;
+	}
+
+	//select mip level
+	int mip_level;
+	mip_level= GetSurfaceMipLevel( surf, final_vertex_count );
+	if( mip_level >= MIPLEVELS ) mip_level= MIPLEVELS-1;
+	GenerateSurfaceCache( surf, texinfo->image, mip_level );
+	panzer_surf_cache_t* cache= surf->cache;
+	command_buffer.current_pos +=
+		ComIn_SetTextureRaw( command_buffer.current_pos + (char*)command_buffer.buffer, cache->data[mip_level],
+		cache->width_log2 - mip_level, cache->height_log2 - mip_level );
+
+put_draw_command:
+
+	char* buff= (char*) command_buffer.buffer;
+	buff+= command_buffer.current_pos;
+	char* buff0= buff;
+	((int*)buff)[0]= COMMAND_DRAW_TRIANGLE;
+	buff+=sizeof(int);
+	DrawTriangleCall* call= (DrawTriangleCall*)buff;
+	call->DrawFromBufferFunc= (mip_level == 0) ? near_draw_func : far_draw_func;
+	call->triangle_count= 0;
+	call->vertex_size= sizeof(int)*3 + sizeof(int)*2; // cached surface vertices has only coords and tex coords
+	buff+= sizeof(DrawTriangleCall);
+	if( final_vertex_count == 0 )
+		return 0;
+	for( int v= 0; v< final_vertex_count; v++ )
+	{
+		tc_u[v]= (tc_u[v]>>mip_level) + tex_coord_shift;
+		tc_v[v]= (tc_v[v]>>mip_level) + tex_coord_shift;
+		surface_final_vertices[v].z*= 65536.0f;//prepare to convertion to fixd16_t format
+	}
+	const float z_min_scaled= PSR_MIN_ZMIN_FLOAT * 65536.0f;
+	for( int t= 0; t< final_vertex_count-2; t++ )
+	{
+		if( surface_final_vertices[0].z <= z_min_scaled || surface_final_vertices[t+1].z <= z_min_scaled || surface_final_vertices[t+2].z <= z_min_scaled )
+			continue;
+		using namespace VertexProcessing;
+		triangle_in_tex_coord[0]= tc_u[0];;
+		triangle_in_tex_coord[1]= tc_v[0];
+		triangle_in_tex_coord[2]= tc_u[t+1];
+		triangle_in_tex_coord[3]= tc_v[t+1];
+		triangle_in_tex_coord[4]= tc_u[t+2];
+		triangle_in_tex_coord[5]= tc_v[t+2];
+	
+		triangle_in_vertex_xy[0]= fixed16_t(surface_final_vertices[0].x);
+		triangle_in_vertex_xy[1]= fixed16_t(surface_final_vertices[0].y);
+		triangle_in_vertex_xy[2]= fixed16_t(surface_final_vertices[t+1].x);
+		triangle_in_vertex_xy[3]= fixed16_t(surface_final_vertices[t+1].y);
+		triangle_in_vertex_xy[4]= fixed16_t(surface_final_vertices[t+2].x);
+		triangle_in_vertex_xy[5]= fixed16_t(surface_final_vertices[t+2].y);
+		triangle_in_vertex_z[0]= fixed16_t(surface_final_vertices[0].z);
+		triangle_in_vertex_z[1]= fixed16_t(surface_final_vertices[t+1].z);
+		triangle_in_vertex_z[2]= fixed16_t(surface_final_vertices[t+2].z);
+
+		if( DrawWorldCachedTriangleToBuffer(buff) != 0 )
+		{
+			buff+= 4 * call->vertex_size;
+			call->triangle_count++;
+			triangle_count++;
+		}
+	}//for t
+
+	return triangle_count;
+}
+
+
+
 void DrawWorldAlphaSurfaces()
 {
 	triangle_draw_func_t  near_draw_func= GetWorldNearDrawFunc(true);
@@ -570,7 +677,7 @@ void DrawWorldAlphaSurfaces()
 
 	msurface_t* surf= alpha_surfaces_chain.first_surface;
 	int surf_cout= alpha_surfaces_chain.surf_count;
-	command_buffer.current_pos += 
+	command_buffer.current_pos +=
 			ComIn_SetConstantBlendFactor( command_buffer.current_pos + (char*)command_buffer.buffer, 64*3 );
 	while( surf_cout != 0 )
 	{
@@ -593,7 +700,7 @@ void DrawWorldAlphaSurfaces()
 		bool no_lightmaps= (surf->flags&SURF_DRAWTURB)!= 0 || surf->samples == NULL;
 		if(!no_lightmaps)
 		{
-			command_buffer.current_pos += 
+			command_buffer.current_pos +=
 			ComIn_SetLightmap( command_buffer.current_pos + (char*)command_buffer.buffer,
 				L_GetSurfaceDynamicLightmap(surf), (surf->extents[0]>>4) + 1 );
 		}
@@ -649,7 +756,7 @@ next_surface:
 			bool no_lightmaps= (surf->flags&SURF_DRAWTURB)!= 0 || (surf->texinfo->flags&SURF_WARP)!= 0 || surf->samples == NULL;
 			if(!no_lightmaps)
 			{
-				command_buffer.current_pos += 
+				command_buffer.current_pos +=
 				ComIn_SetLightmap( command_buffer.current_pos + (char*)command_buffer.buffer,
 					L_GetSurfaceDynamicLightmap(surf), (surf->extents[0]>>4) + 1 );
 			}
@@ -710,9 +817,10 @@ void DrawWorldSurfaces()
 	while( face_count < world_surfaces_chain.surf_count )
 	{
 		bool no_lightmaps= (surf->flags&SURF_DRAWTURB)!= 0 || surf->samples == NULL;
+		bool surf_cachable= IsSurfaceCachable( surf );
 		if(!no_lightmaps)
 		{
-			command_buffer.current_pos += 
+			command_buffer.current_pos +=
 			ComIn_SetLightmap( command_buffer.current_pos + (char*)command_buffer.buffer,
 				L_GetSurfaceDynamicLightmap(surf), (surf->extents[0]>>4) + 1 );
 		}
@@ -735,8 +843,17 @@ void DrawWorldSurfaces()
 		}
 		else
 		{
-			cur_triangles= DrawWorldSurface(surf, near_draw_func, far_draw_func, texinfo, tex_coord_shift );
-			vert_size= sizeof(int)*3 + sizeof(int)*2 + sizeof(int)*2;//cord + tex_coord + lightmap_cooed
+			if(surf_cachable)
+			{
+				cur_triangles= DrawWorldCachedSurface( surf,
+					DrawWorldTriangleCachedTextureNearest, DrawWorldTriangleCachedTextureNearest,texinfo, tex_coord_shift );
+				vert_size= sizeof(int)*3 + sizeof(int)*2;
+			}
+			else
+			{
+				cur_triangles= DrawWorldSurface(surf, near_draw_func, far_draw_func, texinfo, tex_coord_shift );
+				vert_size= sizeof(int)*3 + sizeof(int)*2 + sizeof(int)*2;//cord + tex_coord + lightmap_cooed
+			}
 		}
 		triangle_count+= cur_triangles;
 		command_buffer.current_pos+= sizeof(int) + sizeof(DrawTriangleCall) + cur_triangles * 4 * vert_size;
@@ -816,7 +933,7 @@ void DrawTree_r( mnode_t* node, vec3_t cam_pos )
 			{
 				if( alpha_surfaces_chain.first_surface == NULL )
 				{
-					alpha_surfaces_chain.first_surface= 
+					alpha_surfaces_chain.first_surface=
 					alpha_surfaces_chain.last_surface= surf;
 				}
 				else
