@@ -32,6 +32,7 @@ projection_rect_t vertex_projection;
 
 
 m_Mat4 view_matrix;
+m_Mat4 normal_matrix;//matrix to convert model normals to view space
 float cam_pos[3];
 float fov_y_rad;
 float texels_in_pixel= 64.0f * 2.0f / 768.0f;// number of texels in screen, on surface on distance 1m.
@@ -134,9 +135,9 @@ triangle_draw_func_t GetWorldDrawFunc( int texture_mode, bool is_blending )
 	else
 		x= 0;
 
-	if( strcmp( r_lightmap_mode->string, "lightmap_linear_rgbs" ) == 0 )
+	/*if( strcmp( r_lightmap_mode->string, "lightmap_linear_rgbs" ) == 0 )
 		y= 0;
-	else if( strcmp( r_lightmap_mode->string, "lightmap_linear_colored" ) == 0 )
+	else */if( strcmp( r_lightmap_mode->string, "lightmap_linear_colored" ) == 0 )
 		y= 1;
 	else
 		y= 2;
@@ -231,9 +232,11 @@ void InitTextureSurfacesChain()
 }
 
 
-void SetSurfaceMatrix( m_Mat4* mat )
+void SetSurfaceMatrix( m_Mat4* mat, m_Mat4* normal_mat )
 {
 	view_matrix= *mat;
+	if( normal_mat != NULL )
+		normal_matrix= *normal_mat;
 }
 void SetFov( float fov )
 {
@@ -261,19 +264,31 @@ int GetSurfaceMipLevel( msurface_t* surf, int vert_count )
 {
 	float dst= 0;
 	int front_vertex_count= 0;
+	int neares_vertex_id= 0;
 	for( int i= 0; i< vert_count; i++ )
 	{
 		if( surface_final_vertices[i].z > PSR_MIN_ZMIN_FLOAT )
 		{
 			dst+= surface_final_vertices[i].z;
 			front_vertex_count++;
+			neares_vertex_id= i;
 		}
 	}
 	dst/= float(front_vertex_count);
 
+	//calculate angle between vector from view pos to nearest vertex and surface normal
+	float vec_to_cam[3];
+	VectorSubtract( cam_pos, surface_vertices[neares_vertex_id]->position, vec_to_cam );
+	VectorNormalize( vec_to_cam );
+	float cos_dot= fabsf( DotProduct( vec_to_cam, surf->plane->normal ) );
+	if( cos_dot < 0.25f ) cos_dot= 4.0f;
+	else cos_dot= 1.0f / cos_dot;
+
+	const float mip_shift= 1.2f;
+
 	float* tex_basis_vec= surf->texinfo->vecs[0];
-	float pixels_per_texel= dst * texels_in_pixel * sqrtf( DotProduct(tex_basis_vec,tex_basis_vec) );
-	return FastIntLog2Clamp0( int(pixels_per_texel * 1.35f) );
+	float pixels_per_texel= cos_dot *  dst * texels_in_pixel * sqrtf( DotProduct(tex_basis_vec,tex_basis_vec) );
+	return FastIntLog2Clamp0( int(pixels_per_texel * mip_shift) );
 }
 
 
@@ -589,6 +604,7 @@ int DrawWorldCachedSurface( msurface_t* surf, triangle_draw_func_t near_draw_fun
 	int final_vertex_count= ClipFace(surf->numedges);
 	if( final_vertex_count == 0 )
 		goto put_draw_command;
+
 	for(int e= 0; e< final_vertex_count; e++ )
 	{
 		tc_u[e]= fixed16_t( (DotProduct( surface_vertices[e]->position, surf->texinfo->vecs[0] )
@@ -605,6 +621,7 @@ int DrawWorldCachedSurface( msurface_t* surf, triangle_draw_func_t near_draw_fun
 	//select mip level
 	int mip_level;
 	mip_level= GetSurfaceMipLevel( surf, final_vertex_count );
+
 	if( mip_level >= MIPLEVELS ) mip_level= MIPLEVELS-1;
 	panzer_surf_cache_t* cache= GenerateSurfaceCache( surf, texinfo->image, mip_level );
 	command_buffer.current_pos +=

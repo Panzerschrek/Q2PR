@@ -55,11 +55,11 @@ void ColorCorrectLights( int num_lights )
 		is_colored_lightmap= true;
 		lightmap_type= D_LIGHTMAP_LINEAR_COLORED;
 	}
-	else if( strcmp( r_lightmap_mode->string, "lightmap_linear_rgbs" ) == 0 )
+	/*else if( strcmp( r_lightmap_mode->string, "lightmap_linear_rgbs" ) == 0 )
 	{
 		is_colored_lightmap= true;
 		lightmap_type= D_LIGHTMAP_LINEAR_RGBS;
-	}
+	}*/
 	else
 	{
 		is_colored_lightmap= false;
@@ -274,7 +274,7 @@ void GenerateLightmapLinear( unsigned char* out, msurface_t* surf )
 }
 
 //convert rgbs to colored
-void GenerateLightmapRGBStoColored( unsigned char* out, msurface_t* surf )
+/*void GenerateLightmapRGBStoColored( unsigned char* out, msurface_t* surf )
 {
 	int size_x, size_y;
 	size_x= (surf->extents[0]>>4) + 1;
@@ -320,9 +320,10 @@ void GenerateLightmapRGBStoColored( unsigned char* out, msurface_t* surf )
 		samp++;
 	}
 }
-
+*/
 //convert colored to rgbs
-void ConverLightmapColored2RGBS( unsigned char* in_out, int size/*width*height*/ )
+/*
+void ConverLightmapColored2RGBS( unsigned char* in_out, int size)
 {
 	for( int i=0; i< size*4; i+=4 )
 	{
@@ -339,7 +340,7 @@ void ConverLightmapColored2RGBS( unsigned char* in_out, int size/*width*height*/
 		in_out[i+3]= max;
 	}
 }
-
+*/
 
 void R_SwapLightmapBuffers()
 {
@@ -363,8 +364,8 @@ unsigned char* L_GetSurfaceDynamicLightmap( msurface_t* surf )
 		unsigned char* lightmap= lightmap_buffer.buffer + lightmap_buffer.current_pos;
 		if( lightmap_type == D_LIGHTMAP_LINEAR_COLORED )
 			GenerateLightmapColored( lightmap, surf );
-		else if( lightmap_type == D_LIGHTMAP_LINEAR_RGBS )
-			GenerateLightmapRGBStoColored( lightmap, surf );
+		//else if( lightmap_type == D_LIGHTMAP_LINEAR_RGBS )
+		//	GenerateLightmapRGBStoColored( lightmap, surf );
 		else
 			GenerateLightmapLinear( lightmap, surf );
 
@@ -429,8 +430,8 @@ unsigned char* L_GetSurfaceDynamicLightmap( msurface_t* surf )
 				}//for x
 		}//for light
 
-		if( lightmap_type == D_LIGHTMAP_LINEAR_RGBS )
-			ConverLightmapColored2RGBS( lightmap, size_x * size_y );
+		//if( lightmap_type == D_LIGHTMAP_LINEAR_RGBS )
+		//	ConverLightmapColored2RGBS( lightmap, size_x * size_y );
 
 		lightmap_buffer.current_pos+= (is_colored_lightmap)? size_x * size_y * 4 : size_x * size_y;
 		return lightmap;
@@ -441,13 +442,13 @@ unsigned char* L_GetSurfaceDynamicLightmap( msurface_t* surf )
 
 		if( lightmap_type == D_LIGHTMAP_LINEAR_COLORED )
 			GenerateLightmapColored( lightmap, surf );
-		else if( lightmap_type == D_LIGHTMAP_LINEAR_RGBS )
-			GenerateLightmapRGBStoColored( lightmap, surf );
+		//else if( lightmap_type == D_LIGHTMAP_LINEAR_RGBS )
+		//	GenerateLightmapRGBStoColored( lightmap, surf );
 		else
 			GenerateLightmapLinear( lightmap, surf );
 
-		if( lightmap_type == D_LIGHTMAP_LINEAR_RGBS )
-			ConverLightmapColored2RGBS( lightmap, size_x * size_y );
+		//if( lightmap_type == D_LIGHTMAP_LINEAR_RGBS )
+		//	ConverLightmapColored2RGBS( lightmap, size_x * size_y );
 
 		lightmap_buffer.current_pos+= (is_colored_lightmap)? size_x * size_y * 4 : size_x * size_y;
 		return lightmap;
@@ -570,8 +571,8 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 
 					ColorFloatSwap( swapped_scales );
 					float light_scaler= 1.0f / 255.0f;
-					if( lightmap[3] != 0 )
-						light_scaler*= float(lightmap[3]) * (1.0f/255.0f);//convertion from rgbs
+					//if( lightmap[3] != 0 )
+					//	light_scaler*= float(lightmap[3]) * (1.0f/255.0f);//convertion from rgbs
 					pointcolor[0]+= float(lightmap[0])* light_scaler * swapped_scales[0];
 					pointcolor[1]+= float(lightmap[1])* light_scaler * swapped_scales[1];
 					pointcolor[2]+= float(lightmap[2])* light_scaler * swapped_scales[2];

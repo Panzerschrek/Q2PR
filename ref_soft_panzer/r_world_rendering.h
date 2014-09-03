@@ -54,7 +54,7 @@ triangle_draw_func_t GetWorldNearDrawFuncNoLightmaps( bool is_alpha);
 triangle_draw_func_t GetWorldFarDrawFuncNoLightmaps( bool is_alpha);
 
 int DrawWorldSurface( msurface_t* surf, triangle_draw_func_t near_draw_func, triangle_draw_func_t far_draw_func, mtexinfo_t* texinfo, fixed16_t texcoord_shift );
-void SetSurfaceMatrix( m_Mat4* mat );
+void SetSurfaceMatrix( m_Mat4* mat, m_Mat4* normal_mat );
 void SetFov( float fov );
 void SetWorldFrame( int frame );
 void InitFrustrumClipPlanes( m_Mat4* normal_mat, vec3_t transformed_cam_pos );

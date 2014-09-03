@@ -314,7 +314,7 @@ void Mod_LoadLighting (lump_t *l)
 		return;
 	}
 
-	if( strcmp(r_lightmap_mode->string, "lightmap_linear_rgbs" ) == 0 )
+	/*if( strcmp(r_lightmap_mode->string, "lightmap_linear_rgbs" ) == 0 )
 	{
 		if( r_lightmap_saturation->value > 1.0f )
 			ri.Cvar_Set( "r_lightmap_saturation", "1.0" );
@@ -349,7 +349,7 @@ void Mod_LoadLighting (lump_t *l)
 			loadmodel->lightdata[i+3]= max_component;
 		}
 	}
-	else if( strcmp(r_lightmap_mode->string, "lightmap_linear_colored" ) == 0 )
+	else */if( strcmp(r_lightmap_mode->string, "lightmap_linear_colored" ) == 0 )
 	{
 		sat= (int)(r_lightmap_saturation->value * 255.0f);
 		inv_sat= 255 - sat;
@@ -669,8 +669,9 @@ void Mod_LoadFaces (lump_t *l)
 	int			i, count, surfnum;
 	int			planenum, side;
 	int			light_texel_size;
+	//int			total_texels;
 
-	if( strcmp( r_lightmap_mode->string, "lightmap_linear_rgbs" ) == 0 || strcmp( r_lightmap_mode->string, "lightmap_linear_colored" ) == 0 )
+	if( strcmp( r_lightmap_mode->string, "lightmap_linear_colored" ) == 0 )
 		light_texel_size= 4;
 	else
 		light_texel_size= 1;
@@ -683,6 +684,8 @@ void Mod_LoadFaces (lump_t *l)
 
 	loadmodel->surfaces = out;
 	loadmodel->numsurfaces = count;
+
+	//total_texels= 0;
 
 	for ( surfnum=0 ; surfnum<count ; surfnum++, in++, out++)
 	{
@@ -706,6 +709,7 @@ void Mod_LoadFaces (lump_t *l)
 			out->cache[i]= NULL;
 
 		CalcSurfaceExtents (out);
+		//total_texels+= out->extents[0] * out->extents[1];
 				
 	// lighting info is converted from 24 bit on disk to 8 bit or other
 
@@ -756,6 +760,9 @@ void Mod_LoadFaces (lump_t *l)
 //PGM
 //==============
 	}
+
+	//total_texels= total_texels * 4 / 3;//+ mips
+	//printf( "total world texels cache size: %dMB\n", total_texels * 4 / 1024 / 1024 );
 }
 
 

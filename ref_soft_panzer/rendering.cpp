@@ -855,7 +855,7 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 
 
 	//calculate matrices
-	m_Mat4 pers, rot_x, rot_y, rot_z, result, scale, basis_change, shift, normal_mat, sky_mat, sky_rot;
+	m_Mat4 pers, rot_x, rot_y, rot_z, result, scale, basis_change, shift, normal_mat, sky_mat, sky_rot, world_normals_to_view_space_mat;
 
 	const float to_rad = 3.1415926535f / 180.0f;
 	m_Vec3 pos( -fd->vieworg[0], -fd->vieworg[1], -fd->vieworg[2] );
@@ -883,6 +883,7 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 
 
 	result= shift * scale * rot_z * rot_x * rot_y * basis_change * pers;
+	world_normals_to_view_space_mat= rot_z * rot_x * rot_y * basis_change;
 	SetFov(fd->fov_y * to_rad);
 
 
@@ -900,13 +901,13 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 		InitFrustrumClipPlanes(&normal_mat, r_newrefdef.vieworg);
 		BuildSurfaceLists(&result, fd->vieworg);
 
-		SetSurfaceMatrix(&result);
+		SetSurfaceMatrix(&result, &world_normals_to_view_space_mat);
 		//DrawWorldTextureChains();
 		DrawWorldSurfaces();
 	}
 
 	//solid entities
-	SetSurfaceMatrix(&result);
+	SetSurfaceMatrix(&result, &normal_mat);
 	DrawEntities(&result, &normal_mat, fd->vieworg, false );
 
 
@@ -919,12 +920,12 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 
 		//alpha surfaces
 		InitFrustrumClipPlanes(&normal_mat, r_newrefdef.vieworg);
-		SetSurfaceMatrix(&result);
+		SetSurfaceMatrix(&result, &world_normals_to_view_space_mat);
 		DrawWorldAlphaSurfaces();
 	}
 
 	//alpha entities
-	SetSurfaceMatrix(&result);
+	SetSurfaceMatrix(&result, &world_normals_to_view_space_mat);
 	DrawEntities(&result, &normal_mat, fd->vieworg, true );
 
 	//particles

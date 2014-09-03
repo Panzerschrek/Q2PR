@@ -384,7 +384,7 @@ typedef struct surfcache_s
 typedef struct panzer_surf_cache_s
 {
 	image_t* image;
-	short width, height;// size of current mip. must be power of two
+	short width, height;// size of current mip. width must be power of two
 	short width_log2, height_log2;
 
 	unsigned char* data;// pointed to next byte after end of this struct

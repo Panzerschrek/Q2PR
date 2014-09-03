@@ -135,7 +135,7 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t ca
 	m_Mat4 entity_mat, result_mat, inverse_entity_mat, inverse_normal_mat; 
 	CalculateEntityMatrix( ent, &entity_mat );
 	result_mat= entity_mat * *mat;
-	SetSurfaceMatrix(&result_mat);
+	SetSurfaceMatrix(&result_mat, NULL);
 
 	inverse_normal_matrix= *normal_mat * inverse_normal_matrix;
 	InitFrustrumClipPlanes( &inverse_normal_matrix, cam_pos_model_space );
