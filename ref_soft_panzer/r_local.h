@@ -384,12 +384,18 @@ typedef struct surfcache_s
 typedef struct panzer_surf_cache_s
 {
 	image_t* image;
-	int width, height;// size of mip 0. must be power of two
-	int width_log2, height_log2;
-	int walkthrow_number; //number of cache cycle, when surface allocated
+	short width, height;// size of current mip. must be power of two
+	short width_log2, height_log2;
 
-	unsigned char* data[4];// 4 - for mips
-	char is_mips[4]; //really, booleans
+	unsigned char* data;// pointed to next byte after end of this struct
+	unsigned char* current_frame_data;
+
+	union
+	{
+		long long int light;//for fast copying and comparation
+		unsigned short colored_light_scales[4];//in 8.8 format
+	} cached_light_styles[ MAXLIGHTMAPS ];
+	int mip;
 
 }panzer_surf_cache_t;
 
@@ -611,6 +617,7 @@ extern cvar_t   *r_lightmap_saturation;
 extern cvar_t   *r_dlights_saturation;
 extern cvar_t   *r_palettized_textures;
 extern cvar_t   *r_clear_color_buffer;
+extern cvar_t   *r_surface_caching;
 
 
 

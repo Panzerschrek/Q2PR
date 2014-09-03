@@ -1,5 +1,5 @@
 #include "r_world_rendering.h"
-
+#include "r_surf.h"
 
 #include "panzer_rast/math_lib/matrix.h"
 #include "panzer_rast/rendering_state.h"
@@ -820,6 +820,8 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 
 	InitPlayerFlashlight();
 	SetWorldFrame( int(r_newrefdef.time*2.0f) );
+
+	BeginSurfFrame();
 
 	//set convertion coefficients
 	vertex_projection.x_add= ( 2.0f * float(fd->x) + float(fd->width) ) / float( fd->width);

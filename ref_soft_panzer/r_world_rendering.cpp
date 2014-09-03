@@ -606,11 +606,10 @@ int DrawWorldCachedSurface( msurface_t* surf, triangle_draw_func_t near_draw_fun
 	int mip_level;
 	mip_level= GetSurfaceMipLevel( surf, final_vertex_count );
 	if( mip_level >= MIPLEVELS ) mip_level= MIPLEVELS-1;
-	GenerateSurfaceCache( surf, texinfo->image, mip_level );
-	panzer_surf_cache_t* cache= surf->cache;
+	panzer_surf_cache_t* cache= GenerateSurfaceCache( surf, texinfo->image, mip_level );
 	command_buffer.current_pos +=
-		ComIn_SetTextureRaw( command_buffer.current_pos + (char*)command_buffer.buffer, cache->data[mip_level],
-		cache->width_log2 - mip_level, cache->height_log2 - mip_level );
+		ComIn_SetTextureRaw( command_buffer.current_pos + (char*)command_buffer.buffer, cache->current_frame_data,
+		cache->width_log2, cache->height_log2 );
 
 put_draw_command:
 
@@ -818,7 +817,7 @@ void DrawWorldSurfaces()
 	{
 		bool no_lightmaps= (surf->flags&SURF_DRAWTURB)!= 0 || surf->samples == NULL;
 		bool surf_cachable= IsSurfaceCachable( surf );
-		if(!no_lightmaps)
+		if(!no_lightmaps && !surf_cachable)
 		{
 			command_buffer.current_pos +=
 			ComIn_SetLightmap( command_buffer.current_pos + (char*)command_buffer.buffer,

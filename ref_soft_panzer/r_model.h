@@ -106,8 +106,8 @@ typedef struct msurface_s
 // surface generation data
 	//struct surfcache_s	*cachespots[MIPLEVELS];
 	//PANZER - add pointer to own cache struct
-	struct panzer_surf_cache_s* cache;
-	long long unsigned int surf_cache_walkthrough_number;
+	struct panzer_surf_cache_s* cache[MIPLEVELS];
+	int surf_cache_walkthrough_number[MIPLEVELS];
 
 	short		texturemins[2];
 	short		extents[2];
