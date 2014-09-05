@@ -31,7 +31,7 @@ typedef struct projection_rect_s
 	float x_mul;
 	float y_mul;
 
-	//for particles clipping. valuea ire integet
+	//for particles clipping. values are integer
 	float x_min;
 	float x_max;
 	float y_min;
@@ -53,7 +53,11 @@ triangle_draw_func_t GetWorldFarDrawFunc( bool is_alpha );
 triangle_draw_func_t GetWorldNearDrawFuncNoLightmaps( bool is_alpha);
 triangle_draw_func_t GetWorldFarDrawFuncNoLightmaps( bool is_alpha);
 
-int DrawWorldSurface( msurface_t* surf, triangle_draw_func_t near_draw_func, triangle_draw_func_t far_draw_func, mtexinfo_t* texinfo, fixed16_t texcoord_shift );
+triangle_draw_func_t GetWorldCachedNearDrawFunc( bool is_alpha );
+triangle_draw_func_t GetWorldCachedFarDrawFunc( bool is_alpha );
+
+int DrawWorldSurface		( msurface_t* surf, triangle_draw_func_t near_draw_func, triangle_draw_func_t far_draw_func, mtexinfo_t* texinfo, fixed16_t texcoord_shift );
+int DrawWorldCachedSurface	( msurface_t* surf, triangle_draw_func_t near_draw_func, triangle_draw_func_t far_draw_func, mtexinfo_t* texinfo, fixed16_t texcoord_shift );
 void SetSurfaceMatrix( m_Mat4* mat, m_Mat4* normal_mat );
 void SetFov( float fov );
 void SetWorldFrame( int frame );

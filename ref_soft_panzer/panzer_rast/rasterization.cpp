@@ -120,6 +120,7 @@ unsigned char inv_constant_blend_factor;
 int constant_light;
 unsigned char constant_color[4];
 fixed16_t constant_time;//for turbulence
+int turbulence_amplitude_log2= 3;
 
 void SetConstantTime( fixed16_t time )
 {
@@ -163,6 +164,7 @@ void SetTextureRaw( const unsigned char* data, int size_x_log2, int size_y_log2 
     current_texture_size_y1= current_texture_size_y-1;
 	current_texture_size_x_log2= size_x_log2;
 	current_texture_size_y_log2= size_y_log2;
+
 }
 
 void SetTextureLod( const Texture* t, int lod )
@@ -181,6 +183,8 @@ void SetTextureLod( const Texture* t, int lod )
     current_texture_size_y1= current_texture_size_y-1;
     current_texture_size_x_log2= t->SizeXLog2() - lod;
     current_texture_size_y_log2= t->SizeYLog2() - lod;
+
+	turbulence_amplitude_log2= 3-lod;//hack
 }
 
 
@@ -329,6 +333,7 @@ inline void TexelFetchRGBSLinear( fixed16_t u, fixed16_t v, unsigned char* out_c
 
 }
 
+template< enum BlendingMode blending_mode, enum AlphaTestMode alpha_test_mode >
 void TexelFetchLinear( fixed16_t u, fixed16_t v, unsigned char* out_color )
 {
     int x, y, x1, y1;
@@ -355,40 +360,49 @@ void TexelFetchLinear( fixed16_t u, fixed16_t v, unsigned char* out_color )
     colors[ 0]= current_texture_data[s+0];
     colors[ 1]= current_texture_data[s+1];
     colors[ 2]= current_texture_data[s+2];
-    colors[ 3]= current_texture_data[s+3];
+    if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
+		colors[ 3]= current_texture_data[s+3];
     s= x1 | ( y << current_texture_size_x_log2 );
     s<<= 2;
     colors[ 4]= current_texture_data[s+0];
     colors[ 5]= current_texture_data[s+1];
     colors[ 6]= current_texture_data[s+2];
-    colors[ 7]= current_texture_data[s+3];
+	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
+		colors[ 7]= current_texture_data[s+3];
     s= x | ( y1 << current_texture_size_x_log2 );
     s<<= 2;
     colors[ 8]= current_texture_data[s+0];
     colors[ 9]= current_texture_data[s+1];
     colors[10]= current_texture_data[s+2];
-    colors[11]= current_texture_data[s+3];
+	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
+		colors[11]= current_texture_data[s+3];
     s= x1 | ( y1 << current_texture_size_x_log2 );
     s<<= 2;
     colors[12]= current_texture_data[s+0];
     colors[13]= current_texture_data[s+1];
     colors[14]= current_texture_data[s+2];
-    colors[15]= current_texture_data[s+3];
+	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
+		colors[15]= current_texture_data[s+3];
 
     mixed_colors[0]= ( colors[ 0] * dx1 + colors[ 4] * dx );// >> 16;
     mixed_colors[1]= ( colors[ 1] * dx1 + colors[ 5] * dx );// >> 16;
     mixed_colors[2]= ( colors[ 2] * dx1 + colors[ 6] * dx );// >> 16;
-    mixed_colors[3]= ( colors[ 3] * dx1 + colors[ 7] * dx );// >> 16;
+	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
+		mixed_colors[3]= ( colors[ 3] * dx1 + colors[ 7] * dx );// >> 16;
     mixed_colors[4]= ( colors[ 8] * dx1 + colors[12] * dx );// >> 16;
     mixed_colors[5]= ( colors[ 9] * dx1 + colors[13] * dx );// >> 16;
     mixed_colors[6]= ( colors[10] * dx1 + colors[14] * dx );// >> 16;
-    mixed_colors[7]= ( colors[11] * dx1 + colors[15] * dx );// >> 16;
+	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
+		mixed_colors[7]= ( colors[11] * dx1 + colors[15] * dx );// >> 16;
+
     out_color[0]= ( mixed_colors[0] * dy1 + mixed_colors[4] * dy ) >> 16;
     out_color[1]= ( mixed_colors[1] * dy1 + mixed_colors[5] * dy ) >> 16;
     out_color[2]= ( mixed_colors[2] * dy1 + mixed_colors[6] * dy ) >> 16;
-    out_color[3]= ( mixed_colors[3] * dy1 + mixed_colors[7] * dy ) >> 16;
+	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
+		out_color[3]= ( mixed_colors[3] * dy1 + mixed_colors[7] * dy ) >> 16;
 }
 
+template< enum BlendingMode blending_mode, enum AlphaTestMode alpha_test_mode >
 void TexelFetchLinearPlaettized( fixed16_t u, fixed16_t v, unsigned char* out_color )
 {
     int x, y, x1, y1;
@@ -415,38 +429,46 @@ void TexelFetchLinearPlaettized( fixed16_t u, fixed16_t v, unsigned char* out_co
     colors[ 0]= current_texture_palette[s+0];
     colors[ 1]= current_texture_palette[s+1];
     colors[ 2]= current_texture_palette[s+2];
-    colors[ 3]= current_texture_palette[s+3];
+	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
+		colors[ 3]= current_texture_palette[s+3];
     s= x1 | ( y << current_texture_size_x_log2 );
     s= current_texture_data[s]<<2;
     colors[ 4]= current_texture_palette[s+0];
     colors[ 5]= current_texture_palette[s+1];
     colors[ 6]= current_texture_palette[s+2];
-    colors[ 7]= current_texture_palette[s+3];
+	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
+		colors[ 7]= current_texture_palette[s+3];
     s= x | ( y1 << current_texture_size_x_log2 );
 	s= current_texture_data[s]<<2;
     colors[ 8]= current_texture_palette[s+0];
     colors[ 9]= current_texture_palette[s+1];
     colors[10]= current_texture_palette[s+2];
-    colors[11]= current_texture_palette[s+3];
+	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
+		colors[11]= current_texture_palette[s+3];
     s= x1 | ( y1 << current_texture_size_x_log2 );
 	s= current_texture_data[s]<<2;
     colors[12]= current_texture_palette[s+0];
     colors[13]= current_texture_palette[s+1];
     colors[14]= current_texture_palette[s+2];
-    colors[15]= current_texture_palette[s+3];
+	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
+		colors[15]= current_texture_palette[s+3];
 
     mixed_colors[0]= ( colors[ 0] * dx1 + colors[ 4] * dx );
     mixed_colors[1]= ( colors[ 1] * dx1 + colors[ 5] * dx );
     mixed_colors[2]= ( colors[ 2] * dx1 + colors[ 6] * dx );
-    mixed_colors[3]= ( colors[ 3] * dx1 + colors[ 7] * dx );
+	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
+		mixed_colors[3]= ( colors[ 3] * dx1 + colors[ 7] * dx );
     mixed_colors[4]= ( colors[ 8] * dx1 + colors[12] * dx );
     mixed_colors[5]= ( colors[ 9] * dx1 + colors[13] * dx );
     mixed_colors[6]= ( colors[10] * dx1 + colors[14] * dx );
-    mixed_colors[7]= ( colors[11] * dx1 + colors[15] * dx );
+	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
+		mixed_colors[7]= ( colors[11] * dx1 + colors[15] * dx );
+
     out_color[0]= ( mixed_colors[0] * dy1 + mixed_colors[4] * dy ) >> 16;
     out_color[1]= ( mixed_colors[1] * dy1 + mixed_colors[5] * dy ) >> 16;
     out_color[2]= ( mixed_colors[2] * dy1 + mixed_colors[6] * dy ) >> 16;
-    out_color[3]= ( mixed_colors[3] * dy1 + mixed_colors[7] * dy ) >> 16;
+	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
+		out_color[3]= ( mixed_colors[3] * dy1 + mixed_colors[7] * dy ) >> 16;
 }
 
 
@@ -745,7 +767,7 @@ void DrawSprite( int x0, int y0, int x1, int y1, fixed16_t sprite_in_depth )
             else if( texture_mode == TEXTURE_NEAREST )
                 TexelFetchNearestNoWarp( u>>16, v>>16, color );
             else if( texture_mode == TEXTURE_LINEAR )
-                TexelFetchLinear( u, v, color );
+                TexelFetchLinear< blending_mode, alpha_test_mode >( u, v, color );
             //else if( texture_mode == TEXTURE_NEAREST_MIPMAP )
             //    TexelFetchNearestMipmapNoWarp( u>>16, v>>16, lod, color );
             else if( texture_mode == TEXTURE_FAKE_FILTER )
@@ -768,7 +790,7 @@ void DrawSprite( int x0, int y0, int x1, int y1, fixed16_t sprite_in_depth )
 			else if( texture_mode == TEXTURE_PALETTIZED_NEAREST )
 				TexelFetchNearestPlaettizedNoWarp( u>>16, v>>16, color );
 			else if( texture_mode == TEXTURE_PALETTIZED_LINEAR )
-				TexelFetchLinearPlaettized( u, v, color );
+				TexelFetchLinearPlaettized< blending_mode, alpha_test_mode >( u, v, color );
 			else if( texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER )
             {
 				int ind= (x&1)|((y&1)<<1);
@@ -1090,8 +1112,8 @@ void ScanLines()
 					{
 						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
 						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
-						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
-						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
+						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<turbulence_amplitude_log2;
+						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<turbulence_amplitude_log2;
 						TexelFetchNearest( (v+dv)>>16, (u+du)>>16, color );
 					}
 					else
@@ -1104,12 +1126,12 @@ void ScanLines()
 					{
 						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
 						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
-						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
-						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
-						TexelFetchLinear( v+dv, u+du, color );
+						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<turbulence_amplitude_log2;
+						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<turbulence_amplitude_log2;
+						TexelFetchLinear< blending_mode, alpha_test_mode >( v+dv, u+du, color );
 					}
 					else
-						TexelFetchLinear( Fixed16Mul( line_tc[0], final_z ), Fixed16Mul( line_tc[1] , final_z ), color );
+						TexelFetchLinear< blending_mode, alpha_test_mode >( Fixed16Mul( line_tc[0], final_z ), Fixed16Mul( line_tc[1] , final_z ), color );
 				}
                 else if( texture_mode == TEXTURE_FAKE_FILTER )
                 {
@@ -1118,9 +1140,9 @@ void ScanLines()
 					{
 						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
 						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
-						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
+						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<turbulence_amplitude_log2;
 						du+= dithering_shift_table[ind+1];
-						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
+						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<turbulence_amplitude_log2;
 						dv+= dithering_shift_table[ind];
 						TexelFetchNearest( (v+dv)>>16, (u+du)>>16, color );
 					}
@@ -1147,8 +1169,8 @@ void ScanLines()
 					{
 						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
 						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
-						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
-						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
+						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<turbulence_amplitude_log2;
+						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<turbulence_amplitude_log2;
 						TexelFetchNearestPlaettized( (v+dv)>>16, (u+du)>>16, color );
 					}
 					else
@@ -1162,12 +1184,12 @@ void ScanLines()
 					{
 						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
 						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
-						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
-						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
-						TexelFetchLinearPlaettized( v+dv, u+du, color );
+						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<turbulence_amplitude_log2;
+						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<turbulence_amplitude_log2;
+						TexelFetchLinearPlaettized< blending_mode, alpha_test_mode >( v+dv, u+du, color );
 					}
 					else
-						TexelFetchLinearPlaettized( Fixed16Mul( line_tc[0], final_z ),
+						TexelFetchLinearPlaettized< blending_mode, alpha_test_mode >( Fixed16Mul( line_tc[0], final_z ),
 							Fixed16Mul( line_tc[1] , final_z ), color );
 				}
 				else if( texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER )
@@ -1177,9 +1199,9 @@ void ScanLines()
 					{
 						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
 						fixed16_t v= Fixed16Mul( line_tc[1], final_z );
-						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<3;
+						fixed16_t du= sintable[ ((v+constant_time)>>18)& (sintable_size-1) ]<<turbulence_amplitude_log2;
 						du+= dithering_shift_table[ind+1];
-						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<3;
+						fixed16_t dv= sintable[ ((u+constant_time)>>18)& (sintable_size-1) ]<<turbulence_amplitude_log2;
 						dv+= dithering_shift_table[ind];
 						TexelFetchNearestPlaettized( (v+dv)>>16, (u+du)>>16, color );
 					}

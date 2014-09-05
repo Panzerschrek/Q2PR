@@ -107,6 +107,16 @@ triangle_draw_func_t world_triangles_turbulence_draw_funcs_table[]=
 	DrawWorldTriangleTextureFakeFilterPalettizedTurbulenceBlend
 };
 
+
+triangle_draw_func_t worlf_triangles_cache_draw_funcs_table[]=
+{
+	DrawWorldTriangleCachedTextureNearest,
+	DrawWorldTriangleCachedTextureLinear,
+	DrawWorldTriangleCachedTextureFakeFilter,
+	DrawWorldTriangleCachedTextureNearestBlend,
+	DrawWorldTriangleCachedTextureLinearBlend,
+	DrawWorldTriangleCachedTextureFakeFilterBlend
+};
 /*
 triangle_draw_func_t world_triangles_no_lightmap_draw_funcs_table[]=
 {
@@ -221,6 +231,38 @@ triangle_draw_func_t GetWorldFarDrawFuncNoLightmaps( bool is_alpha )
 }
 
 
+triangle_draw_func_t GetWorldCachedNearDrawFunc( bool is_blend )
+{
+	int x= 0;
+	if( is_blend )
+		x+= 3;
+
+	if( strcmp( r_texture_mode->string, "texture_linear" ) == 0 )
+		x+= 1;
+	else if( strcmp( r_texture_mode->string, "texture_fake_filter" ) == 0 )
+		x+= 2;
+	else
+		x+= 0;
+
+	return worlf_triangles_cache_draw_funcs_table[x];
+}
+
+triangle_draw_func_t GetWorldCachedFarDrawFunc( bool is_blend )
+{
+	int x= 0;
+	if( is_blend )
+		x+= 3;
+	return worlf_triangles_cache_draw_funcs_table[x];
+}
+
+int GetTexCoordNearShift()
+{
+	if( strcmp( r_texture_mode->string, "texture_linear" ) == 0  || strcmp( r_texture_mode->string, "texture_fake_filter" ) == 0 )
+		return -32768;
+	else
+		return 0;
+}
+
 void InitTextureSurfacesChain()
 {
 	memset( &texture_surfaces_chain, 0, sizeof(texture_surfaces_chain_t) );
@@ -281,10 +323,10 @@ int GetSurfaceMipLevel( msurface_t* surf, int vert_count )
 	VectorSubtract( cam_pos, surface_vertices[neares_vertex_id]->position, vec_to_cam );
 	VectorNormalize( vec_to_cam );
 	float cos_dot= fabsf( DotProduct( vec_to_cam, surf->plane->normal ) );
-	if( cos_dot < 0.25f ) cos_dot= 4.0f;
+	if( cos_dot < 0.4f ) cos_dot= 2.5f;
 	else cos_dot= 1.0f / cos_dot;
 
-	const float mip_shift= 1.2f;
+	const float mip_shift= 1.3f;
 
 	float* tex_basis_vec= surf->texinfo->vecs[0];
 	float pixels_per_texel= cos_dot *  dst * texels_in_pixel * sqrtf( DotProduct(tex_basis_vec,tex_basis_vec) );
@@ -528,6 +570,7 @@ put_draw_command:
 	buff+= sizeof(DrawTriangleCall);
 	if( final_vertex_count == 0 )
 		return 0;
+	if( mip_level != 0 ) tex_coord_shift= 0;//no need texture shift for nearest textures
 	for( int v= 0; v< final_vertex_count; v++ )
 	{
 		tc_u[v]= (tc_u[v]>>mip_level) + tex_coord_shift;
@@ -642,10 +685,11 @@ put_draw_command:
 	buff+= sizeof(DrawTriangleCall);
 	if( final_vertex_count == 0 )
 		return 0;
+	if( mip_level != 0 ) tex_coord_shift= 0;//no need texture shift for nearest textures
 	for( int v= 0; v< final_vertex_count; v++ )
 	{
-		tc_u[v]= (tc_u[v]>>mip_level) + tex_coord_shift;
-		tc_v[v]= (tc_v[v]>>mip_level) + tex_coord_shift;
+		tc_u[v]= (tc_u[v]>>mip_level) + tex_coord_shift + 65536;
+		tc_v[v]= (tc_v[v]>>mip_level) + tex_coord_shift + 65536;//+65536 - skip surface border
 		surface_final_vertices[v].z*= 65536.0f;//prepare to convertion to fixd16_t format
 	}
 	const float z_min_scaled= PSR_MIN_ZMIN_FLOAT * 65536.0f;
@@ -654,7 +698,7 @@ put_draw_command:
 		if( surface_final_vertices[0].z <= z_min_scaled || surface_final_vertices[t+1].z <= z_min_scaled || surface_final_vertices[t+2].z <= z_min_scaled )
 			continue;
 		using namespace VertexProcessing;
-		triangle_in_tex_coord[0]= tc_u[0];;
+		triangle_in_tex_coord[0]= tc_u[0];
 		triangle_in_tex_coord[1]= tc_v[0];
 		triangle_in_tex_coord[2]= tc_u[t+1];
 		triangle_in_tex_coord[3]= tc_v[t+1];
@@ -691,6 +735,11 @@ void DrawWorldAlphaSurfaces()
 	triangle_draw_func_t  near_draw_func_no_lightmap= GetWorldNearDrawFuncNoLightmaps(true);
 	triangle_draw_func_t  far_draw_func_no_lightmap= GetWorldFarDrawFuncNoLightmaps(true);
 
+	triangle_draw_func_t near_cache_draw_func= GetWorldCachedNearDrawFunc(true);
+	triangle_draw_func_t far_cache_draw_func= GetWorldCachedFarDrawFunc(true);
+
+	int tex_coord_shift= GetTexCoordNearShift();
+
 	msurface_t* surf= alpha_surfaces_chain.first_surface;
 	int surf_cout= alpha_surfaces_chain.surf_count;
 	command_buffer.current_pos +=
@@ -714,7 +763,8 @@ void DrawWorldAlphaSurfaces()
 		}
 
 		bool no_lightmaps= (surf->flags&SURF_DRAWTURB)!= 0 || surf->samples == NULL;
-		if(!no_lightmaps)
+		bool surf_cachable= IsSurfaceCachable(surf);
+		if(!no_lightmaps && !surf_cachable)
 		{
 			command_buffer.current_pos +=
 			ComIn_SetLightmap( command_buffer.current_pos + (char*)command_buffer.buffer,
@@ -725,12 +775,21 @@ void DrawWorldAlphaSurfaces()
 		if(no_lightmaps)
 		{
 			vert_size= sizeof(int)*3 + sizeof(int)*2;//coord + tex_coord
-			cur_triangles= DrawWorldSurface(surf, near_draw_func_no_lightmap, far_draw_func_no_lightmap, texinfo, 0 );
+			cur_triangles= DrawWorldSurface(surf, near_draw_func_no_lightmap, far_draw_func_no_lightmap, texinfo, tex_coord_shift );
 		}
 		else
 		{
-			vert_size= sizeof(int)*3 + sizeof(int)*2 + sizeof(int)*2;
-			cur_triangles= DrawWorldSurface(surf, near_draw_func, far_draw_func, texinfo, 0 );
+			if(surf_cachable)
+			{
+				cur_triangles= DrawWorldCachedSurface( surf,
+					near_cache_draw_func, far_cache_draw_func,texinfo, tex_coord_shift );
+				vert_size= sizeof(int)*3 + sizeof(int)*2;
+			}
+			else
+			{
+				vert_size= sizeof(int)*3 + sizeof(int)*2 + sizeof(int)*2;
+				cur_triangles= DrawWorldSurface(surf, near_draw_func, far_draw_func, texinfo, tex_coord_shift );
+			}
 		}
 		command_buffer.current_pos+= sizeof(int) + sizeof(DrawTriangleCall) + cur_triangles * 4 * vert_size;
 
@@ -812,20 +871,15 @@ next_surface:
 
 void DrawWorldSurfaces()
 {
-	int tex_coord_shift;
-	int tex_mode;
-	if( strcmp( r_texture_mode->string, "texture_linear" ) == 0 )
-		tex_coord_shift= -32768;
-	else if( strcmp( r_texture_mode->string, "texture_fake_filter" ) == 0 )
-		tex_coord_shift= -32768;
-
-	else
-		tex_coord_shift= 0;
+	int tex_coord_shift= GetTexCoordNearShift();
 
 	triangle_draw_func_t  near_draw_func= GetWorldNearDrawFunc(false);
 	triangle_draw_func_t  far_draw_func= GetWorldFarDrawFunc(false);
 	triangle_draw_func_t  near_draw_func_no_lightmap= GetWorldNearDrawFuncNoLightmaps(false);
 	triangle_draw_func_t  far_draw_func_no_lightmap= GetWorldFarDrawFuncNoLightmaps(false);
+
+	triangle_draw_func_t near_cache_draw_func= GetWorldCachedNearDrawFunc( false );
+	triangle_draw_func_t far_cache_draw_func= GetWorldCachedFarDrawFunc( false );
 
 	int triangle_count= 0, face_count= 0;
 
@@ -862,7 +916,7 @@ void DrawWorldSurfaces()
 			if(surf_cachable)
 			{
 				cur_triangles= DrawWorldCachedSurface( surf,
-					DrawWorldTriangleCachedTextureNearest, DrawWorldTriangleCachedTextureNearest,texinfo, tex_coord_shift );
+					near_cache_draw_func, far_cache_draw_func,texinfo, tex_coord_shift );
 				vert_size= sizeof(int)*3 + sizeof(int)*2;
 			}
 			else

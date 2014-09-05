@@ -17,6 +17,7 @@ extern "C" swstate_t sw_state;
 
 
 void DrawSpriteEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos );
+void InitBrushEntitiesRenderingParameters();
 void DrawBrushEntity( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam_pos, bool is_aplha );
 void DrawAliasEntity(  entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam_pos );
 void DrawBeam( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam_pos );
@@ -907,6 +908,7 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 	}
 
 	//solid entities
+	InitBrushEntitiesRenderingParameters();
 	SetSurfaceMatrix(&result, &normal_mat);
 	DrawEntities(&result, &normal_mat, fd->vieworg, false );
 

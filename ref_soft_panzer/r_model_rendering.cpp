@@ -1,5 +1,6 @@
 #include "rendering.h"
 #include "r_world_rendering.h"
+#include "r_surf.h"
 
 #include "panzer_rast/math_lib/matrix.h"
 #include "panzer_rast/rendering_state.h"
@@ -82,8 +83,8 @@ void DrawSpriteEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 	buff+= sizeof(DrawSpriteCall);
 	
 	float inv_z= 1.0f / pos.z;
-	pos.x= ( pos.x*inv_z + vertex_projection.x_add ) * vertex_projection.x_mul;
-	pos.y= ( pos.y*inv_z + vertex_projection.y_add ) * vertex_projection.y_mul;
+	pos.x= ( pos.x*inv_z + vertex_projection.x_add ) * vertex_projection.x_mul * (1.0f/65536.0f);
+	pos.y= ( pos.y*inv_z + vertex_projection.y_add ) * vertex_projection.y_mul * (1.0f/65536.0f);
 
 	if( pos.x <= vertex_projection.x_min || pos.x >= vertex_projection.x_max ||
 		pos.y <= vertex_projection.y_min || pos.y >= vertex_projection.y_max )
@@ -105,6 +106,42 @@ void DrawSpriteEntity( entity_t* ent, m_Mat4* mat, vec3_t cam_pos )
 }
 
 
+static triangle_draw_func_t  near_draw_func;
+static triangle_draw_func_t  far_draw_func;
+static triangle_draw_func_t  near_draw_func_no_lightmap;
+static triangle_draw_func_t  far_draw_func_no_lightmap;
+static triangle_draw_func_t  near_draw_func_alpha;
+static triangle_draw_func_t  far_draw_func_alpha;
+static triangle_draw_func_t  near_draw_func_no_lightmap_alpha;
+static triangle_draw_func_t  far_draw_func_no_lightmap_alpha;
+
+static triangle_draw_func_t near_cache_draw_func;
+static triangle_draw_func_t far_cache_draw_func;
+static triangle_draw_func_t near_cache_draw_func_alpha;
+static triangle_draw_func_t far_cache_draw_func_alpha;
+static int tex_coord_shift;
+
+void InitBrushEntitiesRenderingParameters()
+{
+	near_draw_func= GetWorldNearDrawFunc(false);
+	far_draw_func= GetWorldFarDrawFunc(false);
+	near_draw_func_no_lightmap= GetWorldNearDrawFuncNoLightmaps(false);
+	far_draw_func_no_lightmap= GetWorldFarDrawFuncNoLightmaps(false);
+
+	near_draw_func_alpha= GetWorldNearDrawFunc(true);
+	far_draw_func_alpha= GetWorldFarDrawFunc(true);
+	near_draw_func_no_lightmap_alpha= GetWorldNearDrawFuncNoLightmaps(true);
+	far_draw_func_no_lightmap_alpha= GetWorldFarDrawFuncNoLightmaps(true);
+
+	near_cache_draw_func= GetWorldCachedNearDrawFunc(false);
+	far_cache_draw_func= GetWorldCachedFarDrawFunc(false);
+	near_cache_draw_func_alpha= GetWorldCachedNearDrawFunc(true);
+	far_cache_draw_func_alpha = GetWorldCachedFarDrawFunc(true);
+
+	extern int GetTexCoordNearShift();
+	tex_coord_shift= GetTexCoordNearShift();
+}
+
 void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam_pos, bool is_aplha )
 {
 
@@ -120,17 +157,6 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t ca
 	CalcualteEntityInverseMatrix( ent, &inverse_entity_matrix, &inverse_normal_matrix );
 	//convert camera position to model space, to use backplane discarding
 	*((m_Vec3*)cam_pos_model_space)= *((m_Vec3*)cam_pos) * inverse_entity_matrix;
-
-	triangle_draw_func_t  near_draw_func= GetWorldNearDrawFunc(false);
-	triangle_draw_func_t  far_draw_func= GetWorldFarDrawFunc(false);
-	triangle_draw_func_t  near_draw_func_no_lightmap= GetWorldNearDrawFuncNoLightmaps(false);
-	triangle_draw_func_t  far_draw_func_no_lightmap= GetWorldFarDrawFuncNoLightmaps(false);
-
-	triangle_draw_func_t  near_draw_func_alpha= GetWorldNearDrawFunc(true);
-	triangle_draw_func_t  far_draw_func_alpha= GetWorldFarDrawFunc(true);
-	triangle_draw_func_t  near_draw_func_no_lightmap_alpha= GetWorldNearDrawFuncNoLightmaps(true);
-	triangle_draw_func_t  far_draw_func_no_lightmap_alpha= GetWorldFarDrawFuncNoLightmaps(true);
-
 
 	m_Mat4 entity_mat, result_mat, inverse_entity_mat, inverse_normal_mat; 
 	CalculateEntityMatrix( ent, &entity_mat );
@@ -168,12 +194,21 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t ca
 
 		bool no_lightmap= (surf->flags&SURF_DRAWTURB)!= 0 || surf->samples == NULL;
 		bool trans_surface= (texinfo->flags&(SURF_TRANS66|SURF_TRANS33)) != 0;
+		bool is_cachable= IsSurfaceCachable( surf );
 		if( no_lightmap )
 		{
 			int cur_triangles= DrawWorldSurface( surf,
 				trans_surface ? near_draw_func_no_lightmap_alpha: near_draw_func_no_lightmap,
 				trans_surface ? far_draw_func_no_lightmap_alpha: far_draw_func_no_lightmap,
-				texinfo, 0 );
+				texinfo, tex_coord_shift );
+			command_buffer.current_pos+= sizeof(int) + sizeof(DrawTriangleCall) + cur_triangles * 4 * sizeof(int)*5;
+		}
+		else if( is_cachable )
+		{
+		int cur_triangles= DrawWorldCachedSurface( surf,
+				trans_surface ? near_cache_draw_func_alpha: near_cache_draw_func,
+				trans_surface ? far_cache_draw_func_alpha: far_cache_draw_func,
+				texinfo, tex_coord_shift );
 			command_buffer.current_pos+= sizeof(int) + sizeof(DrawTriangleCall) + cur_triangles * 4 * sizeof(int)*5;
 		}
 		else
@@ -184,7 +219,7 @@ void DrawBrushEntity(  entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t ca
 			int cur_triangles= DrawWorldSurface( surf,
 				trans_surface ? near_draw_func_alpha : near_draw_func, 
 				trans_surface ? far_draw_func_alpha : far_draw_func,
-				texinfo, 0 );
+				texinfo, tex_coord_shift );
 			command_buffer.current_pos+= sizeof(int) + sizeof(DrawTriangleCall) + cur_triangles * 4 * sizeof(int)*7;
 		}
 	}
@@ -714,7 +749,7 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam
 		tex= R_FindTexture( ent->skin );//for player skins
 	
 	buff+= ComIn_SetTexture( buff, tex );
-	int tex_y_shift= (tex->OriginalSizeY() - tex->SizeY())<<16;
+	int tex_y_shift= tex_coord_shift + ( (tex->OriginalSizeY() - tex->SizeY())<<16 );
 
 	*((int*)buff)= COMMAND_DRAW_TRIANGLE;
 	buff+= sizeof(int);
@@ -764,11 +799,11 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam
 			triangle_in_vertex_z[1]= fixed16_t(current_model_vertices[ tris->index_xyz[1] ].z);
 			triangle_in_vertex_z[2]= fixed16_t(current_model_vertices[ tris->index_xyz[2] ].z);
 
-			triangle_in_tex_coord[0]= st[tris->index_st[0]].s<<16;
+			triangle_in_tex_coord[0]= tex_coord_shift + (st[tris->index_st[0]].s<<16);
 			triangle_in_tex_coord[1]= tex_y_shift -(st[tris->index_st[0]].t<<16);
-			triangle_in_tex_coord[2]= st[tris->index_st[1]].s<<16;
+			triangle_in_tex_coord[2]= tex_coord_shift + (st[tris->index_st[1]].s<<16);
 			triangle_in_tex_coord[3]= tex_y_shift -(st[tris->index_st[1]].t<<16);
-			triangle_in_tex_coord[4]= st[tris->index_st[2]].s<<16;
+			triangle_in_tex_coord[4]= tex_coord_shift + (st[tris->index_st[2]].s<<16);
 			triangle_in_tex_coord[5]= tex_y_shift -(st[tris->index_st[2]].t<<16);
 			*((int*)triangle_in_color)= current_model_vertex_lights[ tris->index_xyz[0] ].light;
 			*((int*)triangle_in_color+1)= current_model_vertex_lights[ tris->index_xyz[1] ].light;
@@ -824,11 +859,11 @@ void DrawAliasEntity( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam
 				triangle_in_vertex_z[0]= fixed16_t(coord[0].z);
 				triangle_in_vertex_z[1]= fixed16_t(coord[1].z);
 				triangle_in_vertex_z[2]= fixed16_t(coord[2].z);
-				triangle_in_tex_coord[0]= fixed16_t(current_model_polygon[0]->st[0]);
+				triangle_in_tex_coord[0]= tex_coord_shift + fixed16_t(current_model_polygon[0]->st[0]);
 				triangle_in_tex_coord[1]= tex_y_shift - fixed16_t(current_model_polygon[0]->st[1]);
-				triangle_in_tex_coord[2]= fixed16_t(current_model_polygon[t+1]->st[0]);
+				triangle_in_tex_coord[2]= tex_coord_shift + fixed16_t(current_model_polygon[t+1]->st[0]);
 				triangle_in_tex_coord[3]= tex_y_shift - fixed16_t(current_model_polygon[t+1]->st[1]);
-				triangle_in_tex_coord[4]= fixed16_t(current_model_polygon[t+2]->st[0]);
+				triangle_in_tex_coord[4]= tex_coord_shift + fixed16_t(current_model_polygon[t+2]->st[0]);
 				triangle_in_tex_coord[5]= tex_y_shift - fixed16_t(current_model_polygon[t+2]->st[1]);
 				if( !is_fullbright )
 				{
