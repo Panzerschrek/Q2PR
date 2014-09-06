@@ -657,6 +657,14 @@
 			<File
 				RelativePath=".\r_surf.cpp"
 				>
+				<FileConfiguration
+					Name="Release Alpha|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						AssemblerOutput="4"
+					/>
+				</FileConfiguration>
 			</File>
 			<File
 				RelativePath=".\r_world_rendering.cpp"
@@ -846,7 +854,7 @@
 						>
 						<Tool
 							Name="VCCLCompilerTool"
-							AssemblerOutput="1"
+							AssemblerOutput="4"
 						/>
 					</FileConfiguration>
 					<FileConfiguration

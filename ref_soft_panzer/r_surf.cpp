@@ -13,9 +13,9 @@ struct
 	unsigned int allocated_size;
 	int walkthrough_count; //number of cycles
 
-	void* current_farme_data;
+	void* current_farme_data[2];
 	void* current_frame_data_current_pos;
-	unsigned int current_frame_data_size;
+	unsigned int current_frame_data_size[2];
 }surfaces_cache;
 
 enum LightmapMode current_frame_lightmap_mode;
@@ -32,25 +32,38 @@ void InitSurfaceCache()
 
 	surfaces_cache.walkthrough_count= 0;
 
-	surfaces_cache.current_frame_data_size= 48 * 1024 * 1024;//really big cache, but we have gigabytes of memory now
-	surfaces_cache.current_farme_data= malloc( surfaces_cache.current_frame_data_size );
+	surfaces_cache.current_frame_data_size[1]=//really big cache, but we have gigabytes of memory now
+	surfaces_cache.current_frame_data_size[0]= surfaces_cache.allocated_size * 2;
+	surfaces_cache.current_farme_data[0]= malloc( surfaces_cache.current_frame_data_size[0] );
+	surfaces_cache.current_farme_data[1]= malloc( surfaces_cache.current_frame_data_size[0] );
 }
 
 
+void ResetSurfaceCache()
+{
+	if( !r_worldmodel )
+		return;
+	for( int i= 0; i< r_worldmodel->numsurfaces; i++ )
+	{
+		for( int j= 0; j< MIPLEVELS; j++ )
+			r_worldmodel->surfaces[i].cache[j]= NULL;
+	}
+}
 void ShutdownSurfaceCache()
 {
 	free( surfaces_cache.data );
 	surfaces_cache.data= surfaces_cache.current_pos= NULL;
 	surfaces_cache.allocated_size= 0;
 
-	free( surfaces_cache.current_farme_data );
-	surfaces_cache.current_farme_data= NULL;
-	surfaces_cache.current_frame_data_size= 0;
+	free( surfaces_cache.current_farme_data[0] );
+	free( surfaces_cache.current_farme_data[1] );
+	surfaces_cache.current_farme_data[1]= surfaces_cache.current_farme_data[0]= NULL;
+	surfaces_cache.current_frame_data_size[1]=
+	surfaces_cache.current_frame_data_size[0]= 0;
 }
 
 void BeginSurfFrame()
 {
-	surfaces_cache.current_frame_data_current_pos= surfaces_cache.current_farme_data;
 	if( strcmp( r_lightmap_mode->string, "lightmap_linear_colored" ) == 0 )
 		current_frame_lightmap_mode= LIGHTMAP_COLORED_LINEAR;
 	else
@@ -61,6 +74,15 @@ void BeginSurfFrame()
 	else
 		current_frame_texture_palettized= false;
 
+	void* tmp= surfaces_cache.current_farme_data[0];
+	surfaces_cache.current_farme_data[0]= surfaces_cache.current_farme_data[1];
+	surfaces_cache.current_farme_data[1]= tmp;
+
+	int tmp_s= surfaces_cache.current_frame_data_size[0];
+	surfaces_cache.current_frame_data_size[0]= surfaces_cache.current_frame_data_size[1];
+	surfaces_cache.current_frame_data_size[1]= tmp_s;
+
+	surfaces_cache.current_frame_data_current_pos= surfaces_cache.current_farme_data[0];
 }
 
 void AllocSurface( msurface_t* surf, int mip )
@@ -127,39 +149,35 @@ int IsSurfaceCachable( msurface_t* surf )
 //inner LightmapFetch variables. Not changing in surface scanlines, and becouse maked globals
 unsigned char* current_lightmap_data;
 int current_lightmap_size_x;
-int lightmap_dy, lightmap_dy1;
+int lightmap_dy, lightmap_dy1;// y * lightmap_width * lightmap_texel_size
 int lightmap_y, lightmap_y1;
 
-void LightmapColoredFetch( fixed16_t u, unsigned char* out_lightmap )
+inline void LightmapColoredFetch( fixed16_t u, unsigned short* out_lightmap )
 {
 	int x, x1;
-    x= u>>16;
+    x= u>>8;
     x1= x+1;
     fixed16_t dx, dx1;
-    dx= ( u & 0xFFFF )>>8;
+    dx= u & 0xFF;
     dx1= 256 - dx;
 
 	int s;
     int colors[12];
     int mixed_colors[6];
 
-    s= x + lightmap_y * current_lightmap_size_x;
-    s<<= 2;
+    s= (x<<2) + lightmap_y;
     colors[ 0]= current_lightmap_data[s+0];
     colors[ 1]= current_lightmap_data[s+1];
     colors[ 2]= current_lightmap_data[s+2];
-    s= x1 + lightmap_y * current_lightmap_size_x;
-    s<<= 2;
+    s= (x1<<2)+ lightmap_y;
     colors[ 3]= current_lightmap_data[s+0];
     colors[ 4]= current_lightmap_data[s+1];
     colors[ 5]= current_lightmap_data[s+2];
-    s= x +  lightmap_y1 * current_lightmap_size_x;
-    s<<= 2;
+    s= (x<<2) + lightmap_y1;
     colors[ 6]= current_lightmap_data[s+0];
     colors[ 7]= current_lightmap_data[s+1];
     colors[ 8]= current_lightmap_data[s+2];
-    s= x1 + lightmap_y1 * current_lightmap_size_x;
-    s<<= 2;
+    s= (x1<<2)+ lightmap_y1;
     colors[ 9]= current_lightmap_data[s+0];
     colors[10]= current_lightmap_data[s+1];
     colors[11]= current_lightmap_data[s+2];
@@ -177,21 +195,21 @@ void LightmapColoredFetch( fixed16_t u, unsigned char* out_lightmap )
 }
 
 //grayscale lightmap
-unsigned char LightmapFetch( fixed16_t u )
+inline unsigned char LightmapFetch( fixed16_t u )
 {
 	int x, x1;
-    x= u>>16;
+    x= u>>8;
     x1= x+1;
     fixed16_t dx, dx1;
-    dx= ( u & 0xFFFF )>>8;
+    dx= u& 0xFF;
     dx1= 256 - dx;
 
     int lights[4];
     int mixed_lights[2];
-	lights[0]= current_lightmap_data[ x + lightmap_y * current_lightmap_size_x ];
-	lights[1]= current_lightmap_data[ x1+ lightmap_y * current_lightmap_size_x ];
-	lights[2]= current_lightmap_data[ x + lightmap_y1* current_lightmap_size_x ];
-	lights[3]= current_lightmap_data[ x1+ lightmap_y1* current_lightmap_size_x ];
+	lights[0]= current_lightmap_data[ x + lightmap_y  ];
+	lights[1]= current_lightmap_data[ x1+ lightmap_y  ];
+	lights[2]= current_lightmap_data[ x + lightmap_y1 ];
+	lights[3]= current_lightmap_data[ x1+ lightmap_y1 ];
     mixed_lights[0]= ( lights[0] * dx1 + lights[1] * dx );
     mixed_lights[1]= ( lights[2] * dx1 + lights[3] * dx );
 
@@ -199,10 +217,22 @@ unsigned char LightmapFetch( fixed16_t u )
 }
 
 
+#ifdef PSR_MASM32
+#define SURFACE_GEN_USE_MMX
+#endif
+
+static const unsigned short color_multipler[]= { 3*256,3*256,3*256,3*256 };
 
 template< int mip, enum LightmapMode lightmap_mode, bool texture_is_palettized >
 void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 {
+
+#ifdef SURFACE_GEN_USE_MMX //initialize constant registers
+	__asm pxor mm0, mm0
+	__asm movq mm1, qword ptr[color_multipler]
+#endif
+
+
 	Texture* tex= R_FindTexture( surf_cache->image );
 	const unsigned char* tex_data= tex->GetLodData(mip);
 
@@ -213,6 +243,8 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 	int min_x= (surf->texturemins[0]>>mip) -1;
 	int min_y= (surf->texturemins[1]>>mip) -1;//-1 for border
 
+	const int lightmap_texel_size_log2= ( lightmap_mode == LIGHTMAP_COLORED_LINEAR ) ? 2 : 0;
+
 	for( int y= 1, y_end= (surf->extents[1]>>mip)+2; y< y_end; y++ )
 	{
 		int tc_y= (y+min_y) & tex_size_y1;
@@ -221,10 +253,11 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 		const unsigned char* src= tex_data + 
 			(tc_y<<tex_size_x_log2) * ( texture_is_palettized? 1 : 4);
 
+		//setup per-line constant lightmap fertch parameters
 		lightmap_dy=  ((y-1)<<(16-4-8+mip)) & 255;
 		lightmap_dy1= 256 - lightmap_dy;
-		lightmap_y= (y-1)>>(4-mip);
-		lightmap_y1= lightmap_y + 1;
+		lightmap_y= ( current_lightmap_size_x * ((y-1)>>(4-mip)) ) <<lightmap_texel_size_log2;
+		lightmap_y1= lightmap_y + (current_lightmap_size_x<<lightmap_texel_size_log2);
 
 		for( int x= 1, x_end= (surf->extents[0]>>mip)+2; x< x_end; x++, dst+= 4 )
 		{
@@ -238,19 +271,30 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 				*((int*)color)= ((int*)src)[ (x+min_x)&tex_size_x1 ];
 			if( lightmap_mode == LIGHTMAP_COLORED_LINEAR )
 			{
-				unsigned char light[4];
-				LightmapColoredFetch( (x-1)<<(16-4+mip), light ); 
-
+				unsigned short light[4];
+				LightmapColoredFetch( (x-1)<<(8-4+mip), light ); 
+#ifdef SURFACE_GEN_USE_MMX
+				__asm
+				{
+					movd mm2, dword ptr[color]
+					punpcklbw mm2, mm0//convert color bytes to words
+					pmullw mm2, qword ptr[light]//*= lightmap
+					pmulhuw mm2, mm1 //=( color * color_multipler )/ 256
+					packuswb mm2, mm0
+					movd dword ptr[color], mm2
+				}
+#else
 				int c= (light[0] * 3 * color[0])>>8; if( c > 255 ) c= 255; color[0]= c;
 				c= (light[1] * 3 * color[1])>>8; if( c > 255 ) c= 255; color[1]= c;
 				c= (light[2] * 3 * color[2])>>8; if( c > 255 ) c= 255; color[2]= c;
+#endif
 			}
 			else
 			{
-				int light= LightmapFetch( (x-1)<<(16-4+mip) );
-				int c= (light * 3 * color[0])>>8; if( c > 255 ) c= 255; color[0]= c;
-				c= (light * 3 * color[1])>>8; if( c > 255 ) c= 255; color[1]= c;
-				c= (light * 3 * color[2])>>8; if( c > 255 ) c= 255; color[2]= c;
+				int light= 3 * LightmapFetch( (x-1)<<(8-4+mip) );
+				int c= (light * color[0])>>8; if( c > 255 ) c= 255; color[0]= c;
+				c= (light * color[1])>>8; if( c > 255 ) c= 255; color[1]= c;
+				c= (light * color[2])>>8; if( c > 255 ) c= 255; color[2]= c;
 			}
 			*((int*)dst)= *((int*)color);
 		}//for x
@@ -267,7 +311,7 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 		lightmap_dy=  0;
 		lightmap_dy1= 256;
 		lightmap_y= 0;
-		lightmap_y1= 1;
+		lightmap_y1= lightmap_y + (current_lightmap_size_x<<lightmap_texel_size_log2);;
 		for( int x= 1, x_end= (surf->extents[0]>>mip)+2; x< x_end; x++, dst+= 4 )
 		{
 			unsigned char color[4];
@@ -280,19 +324,31 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 				*((int*)color)= ((int*)src)[ (x+min_x)&tex_size_x1 ];
 			if( lightmap_mode == LIGHTMAP_COLORED_LINEAR )
 			{
-				unsigned char light[4];
-				LightmapColoredFetch( (x-1)<<(16-4+mip), light ); 
+				unsigned short light[4];
+				LightmapColoredFetch( (x-1)<<(8-4+mip), light ); 
 
+#ifdef SURFACE_GEN_USE_MMX
+				__asm
+				{
+					movd mm2, dword ptr[color]
+					punpcklbw mm2, mm0//convert color bytes to words
+					pmullw mm2, qword ptr[light]//*= lightmap
+					pmulhuw mm2, mm1 //=( color * color_multipler )/ 256
+					packuswb mm2, mm0
+					movd dword ptr[color], mm2
+				}
+#else
 				int c= (light[0] * 3 * color[0])>>8; if( c > 255 ) c= 255; color[0]= c;
 				c= (light[1] * 3 * color[1])>>8; if( c > 255 ) c= 255; color[1]= c;
 				c= (light[2] * 3 * color[2])>>8; if( c > 255 ) c= 255; color[2]= c;
+#endif
 			}
 			else
 			{
-				int light= LightmapFetch( (x-1)<<(16-4+mip) );
-				int c= (light * 3 * color[0])>>8; if( c > 255 ) c= 255; color[0]= c;
-				c= (light * 3 * color[1])>>8; if( c > 255 ) c= 255; color[1]= c;
-				c= (light * 3 * color[2])>>8; if( c > 255 ) c= 255; color[2]= c;
+				int light= 3 * LightmapFetch( (x-1)<<(8-4+mip) );
+				int c= (light * color[0])>>8; if( c > 255 ) c= 255; color[0]= c;
+				c= (light * color[1])>>8; if( c > 255 ) c= 255; color[1]= c;
+				c= (light * color[2])>>8; if( c > 255 ) c= 255; color[2]= c;
 			}
 			*((int*)dst)= *((int*)color);
 			//*((int*)dst)= 0x7f7f7f7f;
@@ -308,8 +364,8 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 				(tc_y<<tex_size_x_log2) * ( texture_is_palettized? 1 : 4);
 		lightmap_dy=  ((y-2)<<(16-4-8+mip)) & 255;
 		lightmap_dy1= 256 - lightmap_dy;
-		lightmap_y= (y-2)>>(4-mip);
-		lightmap_y1= lightmap_y + 1;
+		lightmap_y= ( ((y-2)>>(4-mip)) * current_lightmap_size_x )<<lightmap_texel_size_log2;
+		lightmap_y1= lightmap_y + (current_lightmap_size_x<<lightmap_texel_size_log2);
 		for( int x= 1, x_end= (surf->extents[0]>>mip)+2; x< x_end; x++, dst+= 4 )
 		{
 			unsigned char color[4];
@@ -322,19 +378,30 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 				*((int*)color)= ((int*)src)[ (x+min_x)&tex_size_x1 ];
 			if( lightmap_mode == LIGHTMAP_COLORED_LINEAR )
 			{
-				unsigned char light[4];
-				LightmapColoredFetch( (x-1)<<(16-4+mip), light ); 
-
+				unsigned short light[4];
+				LightmapColoredFetch( (x-1)<<(8-4+mip), light ); 
+#ifdef SURFACE_GEN_USE_MMX
+				__asm
+				{
+					movd mm2, dword ptr[color]
+					punpcklbw mm2, mm0//convert color bytes to words
+					pmullw mm2, qword ptr[light]//*= lightmap
+					pmulhuw mm2, mm1 //=( color * color_multipler )/ 256
+					packuswb mm2, mm0
+					movd dword ptr[color], mm2
+				}
+#else
 				int c= (light[0] * 3 * color[0])>>8; if( c > 255 ) c= 255; color[0]= c;
 				c= (light[1] * 3 * color[1])>>8; if( c > 255 ) c= 255; color[1]= c;
 				c= (light[2] * 3 * color[2])>>8; if( c > 255 ) c= 255; color[2]= c;
+#endif
 			}
 			else
 			{
-				int light= LightmapFetch( (x-1)<<(16-4+mip) );
-				int c= (light * 3 * color[0])>>8; if( c > 255 ) c= 255; color[0]= c;
-				c= (light * 3 * color[1])>>8; if( c > 255 ) c= 255; color[1]= c;
-				c= (light * 3 * color[2])>>8; if( c > 255 ) c= 255; color[2]= c;
+				int light= 3 * LightmapFetch( (x-1)<<(8-4+mip) );
+				int c= (light * color[0])>>8; if( c > 255 ) c= 255; color[0]= c;
+				c= (light * color[1])>>8; if( c > 255 ) c= 255; color[1]= c;
+				c= (light * color[2])>>8; if( c > 255 ) c= 255; color[2]= c;
 			}
 			*((int*)dst)= *((int*)color);
 		}//for x
@@ -353,8 +420,8 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 	
 			lightmap_dy=  ((y-1)<<(16-4-8+mip)) & 255;
 			lightmap_dy1= 256 - lightmap_dy;
-			lightmap_y= (y-1)>>(4-mip);
-			lightmap_y1= lightmap_y + 1;
+			lightmap_y= ( ((y-1)>>(4-mip)) * current_lightmap_size_x )<<lightmap_texel_size_log2;
+			lightmap_y1= lightmap_y + (current_lightmap_size_x<<lightmap_texel_size_log2);
 
 			if( texture_is_palettized )
 			{
@@ -365,19 +432,30 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 				*((int*)color)= ((int*)src)[ tc_y<<tex_size_x_log2 ];
 			if( lightmap_mode == LIGHTMAP_COLORED_LINEAR )
 			{
-				unsigned char light[4];
-				LightmapColoredFetch( x<<(16-4+mip), light ); 
-
+				unsigned short light[4];
+				LightmapColoredFetch( x<<(8-4+mip), light ); 
+#ifdef SURFACE_GEN_USE_MMX
+				__asm
+				{
+					movd mm2, dword ptr[color]
+					punpcklbw mm2, mm0//convert color bytes to words
+					pmullw mm2, qword ptr[light]//*= lightmap
+					pmulhuw mm2, mm1 //=( color * color_multipler )/ 256
+					packuswb mm2, mm0
+					movd dword ptr[color], mm2
+				}
+#else
 				int c= (light[0] * 3 * color[0])>>8; if( c > 255 ) c= 255; color[0]= c;
 				c= (light[1] * 3 * color[1])>>8; if( c > 255 ) c= 255; color[1]= c;
 				c= (light[2] * 3 * color[2])>>8; if( c > 255 ) c= 255; color[2]= c;
+#endif			
 			}
 			else
 			{
-				int light= LightmapFetch( x<<(16-4+mip) );
-				int c= (light * 3 * color[0])>>8; if( c > 255 ) c= 255; color[0]= c;
-				c= (light * 3 * color[1])>>8; if( c > 255 ) c= 255; color[1]= c;
-				c= (light * 3 * color[2])>>8; if( c > 255 ) c= 255; color[2]= c;
+				int light= 3 * LightmapFetch( x<<(8-4+mip) );
+				int c= (light * color[0])>>8; if( c > 255 ) c= 255; color[0]= c;
+				c= (light * color[1])>>8; if( c > 255 ) c= 255; color[1]= c;
+				c= (light * color[2])>>8; if( c > 255 ) c= 255; color[2]= c;
 			}
 			*((int*)dst)= *((int*)color);
 		}
@@ -396,8 +474,8 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 	
 			lightmap_dy=  ((y-1)<<(16-4-8+mip)) & 255;
 			lightmap_dy1= 256 - lightmap_dy;
-			lightmap_y= (y-1)>>(4-mip);
-			lightmap_y1= lightmap_y + 1;
+			lightmap_y= ( ((y-1)>>(4-mip)) * current_lightmap_size_x )<<lightmap_texel_size_log2;
+			lightmap_y1= lightmap_y + (current_lightmap_size_x<<lightmap_texel_size_log2);
 
 			if( texture_is_palettized )
 			{
@@ -408,16 +486,27 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 				*((int*)color)= ((int*)src)[ tc_y<<tex_size_x_log2 ];
 			if( lightmap_mode == LIGHTMAP_COLORED_LINEAR )
 			{
-				unsigned char light[4];
-				LightmapColoredFetch( (x-2)<<(16-4+mip), light ); 
-
+				unsigned short light[4];
+				LightmapColoredFetch( (x-2)<<(8-4+mip), light ); 
+#ifdef SURFACE_GEN_USE_MMX
+				__asm
+				{
+					movd mm2, dword ptr[color]
+					punpcklbw mm2, mm0//convert color bytes to words
+					pmullw mm2, qword ptr[light]//*= lightmap
+					pmulhuw mm2, mm1 //=( color * color_multipler )/ 256
+					packuswb mm2, mm0
+					movd dword ptr[color], mm2
+				}
+#else
 				int c= (light[0] * 3 * color[0])>>8; if( c > 255 ) c= 255; color[0]= c;
 				c= (light[1] * 3 * color[1])>>8; if( c > 255 ) c= 255; color[1]= c;
 				c= (light[2] * 3 * color[2])>>8; if( c > 255 ) c= 255; color[2]= c;
+#endif
 			}
 			else
 			{
-				int light= LightmapFetch( (x-2)<<(16-4+mip) );
+				int light= LightmapFetch( (x-2)<<(8-4+mip) );
 				int c= (light * 3 * color[0])>>8; if( c > 255 ) c= 255; color[0]= c;
 				c= (light * 3 * color[1])>>8; if( c > 255 ) c= 255; color[1]= c;
 				c= (light * 3 * color[2])>>8; if( c > 255 ) c= 255; color[2]= c;
@@ -449,6 +538,10 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 			}
 		}
 	}
+
+#ifdef SURFACE_GEN_USE_MMX
+	__asm emms
+#endif
 
 }
 
@@ -494,6 +587,8 @@ panzer_surf_cache_t* GenerateSurfaceCache( msurface_t* surf, image_t* current_su
 		tmp_cache.image= current_surf_image;
 		tmp_cache.mip= mip;
 
+		int ds= tmp_cache.width * ( (surf->extents[1]>>mip)+2 ) * 4;
+
 		tmp_cache.current_frame_data= 
 		tmp_cache.data= (unsigned char*)surfaces_cache.current_frame_data_current_pos;
 
@@ -506,7 +601,7 @@ panzer_surf_cache_t* GenerateSurfaceCache( msurface_t* surf, image_t* current_su
 			(GenerateSurfaceMipFuncsGrayscaleLighting[func_num])( surf, &tmp_cache);
 
 		surfaces_cache.current_frame_data_current_pos=
-			(char*)surfaces_cache.current_frame_data_current_pos + tmp_cache.width * ( (surf->extents[1]>>mip)+2 ) * 4;
+			(char*)surfaces_cache.current_frame_data_current_pos + ds;
 		return &tmp_cache;
 	}
 	//else - generate and cache surface

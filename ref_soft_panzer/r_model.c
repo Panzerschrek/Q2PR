@@ -704,10 +704,6 @@ void Mod_LoadFaces (lump_t *l)
 
 		out->texinfo = loadmodel->texinfo + LittleShort (in->texinfo);
 
-		//PANZER - zero cache
-		for( i= 0; i< 4; i++ )
-			out->cache[i]= NULL;
-
 		CalcSurfaceExtents (out);
 		//total_texels+= out->extents[0] * out->extents[1];
 				

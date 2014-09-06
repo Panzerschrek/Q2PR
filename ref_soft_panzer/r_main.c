@@ -460,6 +460,7 @@ void PANZER_BeginRegistration(char *map)
 	}
 	registration_sequence++;
 	R_BeginRegistration(map);
+	ResetSurfaceCache();
 	//printf( "--------begin registration. map - \"%s\"\n", map );
 }
 
@@ -610,6 +611,8 @@ void PANZER_CinematicSetPalette( const unsigned char *palette)
 }
 void PANZER_BeginFrame( float camera_separation )
 {
+	r_framecount++;
+
 	if( r_use_multithreading->modified || r_lightmap_mode->modified || r_lightmap_saturation->modified || r_palettized_textures->modified )
 	{
 		r_use_multithreading->modified= false;
@@ -636,6 +639,10 @@ void PANZER_BeginFrame( float camera_separation )
 		PR_UnlockFramebuffer();
 
 		vid_fullscreen->modified= false;
+
+		ResetSurfaceCache();
+		ShutdownSurfaceCache();
+		InitSurfaceCache();
 	}
 	if( vid_gamma->modified )
 	{

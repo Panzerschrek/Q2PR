@@ -94,8 +94,10 @@ m_Mat4 world_final_matrix;
 m_Mat4 world_normals_matrix;
 
 
-//draw chars directly to front buffer
-void DrawChars()
+//draw chars directly to front buffer 
+//CURRENTLY UNUSED. now, all chars draw in order of PANZER_DrawChar callings
+/*
+void DrawChars( void* unused )
 {
 	image_t* img= PANZER_RegisterPic( "conchars" );
 	console_tex= R_FindTexture(img);
@@ -138,7 +140,106 @@ void DrawChars()
 
 	//back_chars->char_count= 0;
 }
+*/
 
+
+void BackendDrawChar( void* data )
+{
+	int param= *((int*)data);
+
+	unsigned char char_code= param&255;
+
+	int x0= (param>>8)&4095;
+	int y0= (param>>(8+12))&4095;
+
+
+	if( y0 >= vid.height - 8 || y0 < 0 )
+		return;
+
+	unsigned char* dst= PRast_GetFrontBuffer() + ( x0 + y0*vid.width )*4;
+
+	unsigned int row= 15 - (char_code>>4);
+	unsigned int col= char_code&15;
+	const unsigned char* src= console_tex->GetData() + (col<<(3+2)) + (row<<(3+7+2));
+
+#ifdef PSR_MASM32
+	int dst_add= vid.width<<2;
+	unsigned int transparent_color= d_8to24table[255];
+	transparent_color|= 0xFF000000;
+	__asm
+	{
+		mov edi, dst
+		mov esi, src
+		mov ecx, 8
+		mov ebx, transparent_color
+next_char_line:
+		mov eax, dword ptr[esi]
+		cmp eax, ebx
+		jz c1
+		mov dword ptr[edi], eax
+		c1:
+		mov edx, dword ptr[esi+4]
+		cmp edx, ebx
+		jz c2
+		mov dword ptr[edi+4], edx
+		c2:
+		mov eax, dword ptr[esi+8]
+		cmp eax, ebx
+		jz c3
+		mov dword ptr[edi+8], eax
+		c3:
+		mov edx, dword ptr[esi+12]
+		cmp edx, ebx
+		jz c4
+		mov dword ptr[edi+12], edx
+		c4:
+		mov eax, dword ptr[esi+16]
+		cmp eax, ebx
+		jz c5
+		mov dword ptr[edi+16], eax
+		c5:
+		mov edx, dword ptr[esi+20]
+		cmp edx, ebx
+		jz c6
+		mov dword ptr[edi+20], edx
+		c6:
+		mov eax, dword ptr[esi+24]
+		cmp eax, ebx
+		jz c7
+		mov dword ptr[edi+24], eax
+		c7:
+		mov edx, dword ptr[esi+28]
+		cmp edx, ebx
+		jz c8
+		mov dword ptr[edi+28], edx
+		c8:
+
+		add edi, dst_add
+		add esi, 128*4
+		loop next_char_line
+	}
+#else
+	for( int y= 0; y< 8; y++, dst+=vid.width<<2, src+=128<<2)
+	{
+		if( src[0 +3] < 130 )
+			((int*)dst)[0]= ((int*)src)[0];
+		if( src[4 +3] < 130 )
+			((int*)dst)[1]= ((int*)src)[1];
+		if( src[8 +3] < 130 )
+			((int*)dst)[2]= ((int*)src)[2];
+		if( src[12+3] < 130 )
+			((int*)dst)[3]= ((int*)src)[3];
+		if( src[16+3] < 130 )
+			((int*)dst)[4]= ((int*)src)[4];
+		if( src[20+3] < 130 )
+			((int*)dst)[5]= ((int*)src)[5];
+		if( src[24+3] < 130 )
+			((int*)dst)[6]= ((int*)src)[6];
+		if( src[28+3] < 130 )
+			((int*)dst)[7]= ((int*)src)[7];
+	}
+#endif
+}
 
 extern "C" unsigned int __stdcall PR_MainBackEndFunc( void* unused_param )
 {
@@ -191,6 +292,9 @@ extern "C" void PR_InitRendering()
 		back_command_buffer.current_pos= 0;
 
 	InitParticles();
+
+	image_t* img= PANZER_RegisterPic( "conchars" );
+	console_tex= R_FindTexture(img);
 }
 extern "C" void PR_ShutdownRendering()
 {
@@ -247,8 +351,8 @@ extern "C" void PR_SwapCommandBuffers()
 	//DrawCharString( 8, 16, statistic_str );
 
 	//draw chars
-	command_buffer.current_pos+= ComIn_AddUserDefinedFunc(
-			(char*)command_buffer.buffer + command_buffer.current_pos, DrawChars );
+	//command_buffer.current_pos+= ComIn_AddUserDefinedFunc(
+	//		(char*)command_buffer.buffer + command_buffer.current_pos, DrawChars, 0 );
 	//swap color channels
 	/*command_buffer.current_pos+= ComIn_SwapRedBlueInColorBuffer(
 				(char*)command_buffer.buffer + command_buffer.current_pos );*/
@@ -407,14 +511,29 @@ extern "C" void PANZER_DrawChar(int x, int y, int c)
 {
 	if(c == 32 || c == 32+128)
 		return;
-	if( front_chars->char_count >= MAX_BUFFER_CHARS )
+	/*if( front_chars->char_count >= MAX_BUFFER_CHARS )
 		return;
 	int i= front_chars->char_count;
 	c&= 255;
 	front_chars->char_buffer[i]= c;
 	front_chars->char_buffer_coords[i*2  ]= x;
 	front_chars->char_buffer_coords[i*2+1]= vid.height - y - 8;
-	front_chars->char_count++;
+	front_chars->char_count++;*/
+	char* buff= (char*) command_buffer.buffer;
+	buff+= command_buffer.current_pos;
+	char* buff0= buff;
+
+	buff+= ComIn_AddUserDefinedFunc( buff, BackendDrawChar, sizeof(int) );
+	y= vid.height - y - 8;
+	int param= c&255;
+	param|= x<<8;
+	param|= y<<(8+12);
+	*((int*)buff)= param;
+
+	buff+= sizeof(int);
+
+	command_buffer.current_pos+= buff-buff0;
+
 }
 
 void DrawCharString( int x, int y, const char* str )
@@ -817,8 +936,6 @@ void DrawFullscreenBlend()
 extern "C" void PANZER_RenderFrame(refdef_t *fd)
 {
 	r_newrefdef= *fd;
-	r_framecount++;
-
 	InitPlayerFlashlight();
 	SetWorldFrame( int(r_newrefdef.time*2.0f) );
 
@@ -841,7 +958,7 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 		(char*)command_buffer.buffer + command_buffer.current_pos, 0x0000 );
 
 	//clear color buffer ( if need )
-	if( r_clear_color_buffer->value || (fd->rdflags&RDF_NOWORLDMODEL) != 0 )
+	if( r_clear_color_buffer->value /*|| (fd->rdflags&RDF_NOWORLDMODEL) != 0*/ )
 	{
 		static const unsigned char clear_color[]= { 0, 0, 0, 0 };
 		command_buffer.current_pos+= ComIn_ClearColorBuffer(

@@ -182,13 +182,14 @@ unsigned int ComIn_SetLightmap( void* command_buffer, const unsigned char* light
 	return sizeof(int) + sizeof(unsigned char*) + sizeof(int);
 }
 
-unsigned int ComIn_AddUserDefinedFunc( void* command_buffer, void (*func)(void) )
+unsigned int ComIn_AddUserDefinedFunc( void* command_buffer, void (*func)(void*), int param_size )
 {
 	*((int*)command_buffer)= COMMAND_USER_DEFINED;
 	command_buffer= ((char*)command_buffer) + 4;
 
 	UserDefinedFuncCall* call= (UserDefinedFuncCall*)command_buffer;
 	call->func= func;
+	call->data_size= param_size;
 	return sizeof(int) + sizeof(UserDefinedFuncCall);
 }
 
@@ -376,8 +377,8 @@ unsigned int ComOut_DrawTextureRect( const void* command_buffer )
 unsigned int ComOut_CallUserDefineFunc( const void* command_buffer )
 {
 	UserDefinedFuncCall* call= (UserDefinedFuncCall*)command_buffer;
-	call->func();
-	return sizeof(UserDefinedFuncCall);
+	call->func( (char*)command_buffer + sizeof(UserDefinedFuncCall) );
+	return sizeof(UserDefinedFuncCall) + call->data_size;
 }
 
 static unsigned int (*Commands[])(const void*)= { 

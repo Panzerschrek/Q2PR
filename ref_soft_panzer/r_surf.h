@@ -10,6 +10,7 @@ void InitSurfaceCache();
 void ShutdownSurfaceCache();
 int IsSurfaceCachable( msurface_t* surf );//really bool
 void BeginSurfFrame();
+void ResetSurfaceCache();
 
 #ifdef __cplusplus
 //extern "C"

@@ -80,7 +80,8 @@ struct DrawFadeScreenCall
 
 struct UserDefinedFuncCall
 {
-	void (*func)(void);
+	void (*func)(void*);
+	int data_size;
 };
 
 
@@ -110,7 +111,7 @@ unsigned int ComIn_SetTexturePalette( void* command_buffer, const Texture* textu
 unsigned int ComIn_SetTexturePaletteRaw( void* command_buffer, const  unsigned char* palette );
 unsigned int ComIn_SetLightmap( void* command_buffer, const unsigned char* lightmap_data, int width );
 
-unsigned int ComIn_AddUserDefinedFunc( void* command_buffer, void (*func)(void) );
+unsigned int ComIn_AddUserDefinedFunc( void* command_buffer, void (*func)(void*), int param_size );
 
 void ComOut_DoCommands( const void* command_buffer, unsigned int buffer_size );
 

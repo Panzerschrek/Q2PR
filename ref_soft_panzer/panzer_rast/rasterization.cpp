@@ -710,6 +710,27 @@ enum DepthTestMode depth_test_mode,
 bool write_depth >
 void DrawSprite( int x0, int y0, int x1, int y1, fixed16_t sprite_in_depth )
 {
+#ifdef PSR_MASM32
+	/*
+	mm0 is always constant and zero
+	mm1,mm2 nonconstant
+	mm3 - blend factor in short format
+	mm4 - inv blend factor in short format
+	*/
+
+	if( blending_mode == BLENDING_CONSTANT )
+	{
+		unsigned short blend_factor[]= { constant_blend_factor, constant_blend_factor, constant_blend_factor, constant_blend_factor };
+		unsigned short inv_blend_factor[]= { inv_constant_blend_factor, inv_constant_blend_factor, inv_constant_blend_factor, inv_constant_blend_factor };
+		__asm movq mm3, qword ptr[blend_factor]
+		__asm movq mm4, qword ptr[inv_blend_factor]
+		__asm pxor mm0, mm0
+	}
+	else if( blending_mode == BLENDING_SRC_ALPHA )
+	{
+		__asm pxor mm0, mm0
+	}
+#endif
     int x_begin= FastIntClampToZero( x0 );
     int x_end= FastIntMin( x1, screen_size_x );
     int y= FastIntClampToZero( y0 );
@@ -845,16 +866,54 @@ void DrawSprite( int x0, int y0, int x1, int y1, fixed16_t sprite_in_depth )
             {
                 if( blending_mode == BLENDING_CONSTANT )
                 {
+#ifdef PSR_MASM32
+					__asm
+					{
+						movd mm1, color
+						punpcklbw mm1, mm0
+						mov edi, pixels
+						movd mm2, dword ptr[edi]
+						punpcklbw mm2, mm0
+						pmullw mm1, mm3//src_color*= constant_blend_factor
+						pmullw mm2, mm4//dst_color*= inv_constant_blend_factor
+						paddw mm1, mm2
+						psrlw mm1, 8
+						packuswb mm1, mm0
+						movd dword ptr[edi], mm1
+					}
+#else
                     pixels[0]= ( color[0] * constant_blend_factor + pixels[0] * inv_constant_blend_factor ) >> 8;
                     pixels[1]= ( color[1] * constant_blend_factor + pixels[1] * inv_constant_blend_factor ) >> 8;
                     pixels[2]= ( color[2] * constant_blend_factor + pixels[2] * inv_constant_blend_factor ) >> 8;
+#endif
                 }
                 else if( blending_mode == BLENDING_SRC_ALPHA )
                 {
+#ifdef PSR_MASM32
+					unsigned short blend_factor[4]= { color[3], color[3], color[3] };
+					unsigned short inv_b= 255 - color[3];
+					unsigned short inv_blend_factor[4]= { inv_b, inv_b, inv_b };
+					__asm
+					{
+						movd mm1, color
+						punpcklbw mm1, mm0
+						mov edi, pixels
+						movd mm2, dword ptr[edi]
+						punpcklbw mm2, mm0
+						pmullw mm1, qword ptr[blend_factor]//src_color*= constant_blend_factor
+						pmullw mm2, qword ptr[inv_blend_factor]//dst_color*= inv_constant_blend_factor
+						paddw mm1, mm2
+						psrlw mm1, 8
+						packuswb mm1, mm0
+						movd dword ptr[edi], mm1
+					}
+#else
+
                     unsigned char inv_blend_factor= 255 - color[3];
                     pixels[0]= ( color[0] * color[3] + pixels[0] * inv_blend_factor ) >> 8;
                     pixels[1]= ( color[1] * color[3] + pixels[1] * inv_blend_factor ) >> 8;
                     pixels[2]= ( color[2] * color[3] + pixels[2] * inv_blend_factor ) >> 8;
+#endif
                 }
                 else if( blending_mode == BLENDING_FAKE )
                 {
@@ -895,6 +954,13 @@ next_pixel:
 		if( texture_mode != TEXTURE_NONE )
 			v+= dv;
     }//y
+
+#ifdef PSR_MASM32
+	if( blending_mode == BLENDING_CONSTANT || blending_mode == BLENDING_SRC_ALPHA )
+	{
+		__asm emms
+	}
+#endif
 
 }//DrawSprite
 
@@ -1001,6 +1067,28 @@ enum DepthTestMode depth_test_mode,
 bool write_depth >
 void ScanLines()
 {
+	//mmx registers initialization
+#ifdef PSR_MASM32
+	/*
+	mm0 is always constant and zero
+	mm1,mm2 nonconstant
+	mm3 - blend factor in short format
+	mm4 - inv blend factor in short format
+	*/
+	if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
+	{
+		__asm pxor mm0, mm0
+	}
+	if( blending_mode == BLENDING_CONSTANT )
+	{
+		unsigned short blend_factor[4]= { constant_blend_factor, constant_blend_factor, constant_blend_factor };
+		unsigned short inv_blend_factor[4]= { inv_constant_blend_factor, inv_constant_blend_factor, inv_constant_blend_factor };
+		__asm pxor mm0, mm0
+		__asm movq mm3, qword ptr[blend_factor]
+		__asm movq mm4, qword ptr[inv_blend_factor]
+	}
+#endif
+
 	for( int y= y_begin; y<= y_end; y++, x_left+= dx_left, x_right+= dx_right )//scan lines
     {
 		int x_begin= FastIntClampToZero( (x_left>>16)+1 );
@@ -1260,6 +1348,29 @@ void ScanLines()
             }
 			else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
             {
+#ifdef PSR_MASM32
+				unsigned short final_light[4];
+				__asm
+				{
+					mov ebx, final_z
+					mov eax, dword ptr[line_color]
+					imul ebx
+					mov  word ptr[final_light], dx
+					mov eax, dword ptr[line_color+4]
+					imul ebx
+					mov  word ptr[final_light+2], dx
+					mov eax, dword ptr[line_color+8]
+					imul ebx
+					mov  word ptr[final_light+4], dx
+
+					movd mm2, dword ptr[color]
+					punpcklbw mm2, mm0//convert color bytes to words
+					psllw mm2, 8
+					pmulhuw mm2, qword ptr[final_light]//*= light
+					packuswb mm2, mm0
+					movd dword ptr[color], mm2
+				}
+#else
 				int final_light[3];
 				final_light[0]= Fixed16MulResultToInt( line_color[0], final_z );
 				final_light[1]= Fixed16MulResultToInt( line_color[1], final_z );
@@ -1267,13 +1378,7 @@ void ScanLines()
                 color[0]= FastIntUByteMulClamp255( final_light[0], color[0] );
                 color[1]= FastIntUByteMulClamp255( final_light[1], color[1] );
                 color[2]= FastIntUByteMulClamp255( final_light[2], color[2] );
-				/*final_light[0]= ( Fixed16MulResultToInt( line_color[0], final_z ) * color[0] )>>8;
-				if( final_light[0] > 255 ) final_light[0]= 255; color[0]= final_light[0];
-				final_light[1]= ( Fixed16MulResultToInt( line_color[1], final_z ) * color[1] )>>8;
-				if( final_light[1] > 255 ) final_light[1]= 255; color[1]= final_light[1];
-				final_light[2]= ( Fixed16MulResultToInt( line_color[2], final_z ) * color[2] )>>8;
-				if( final_light[2] > 255 ) final_light[2]= 255; color[2]= final_light[2];*/
-
+#endif
             }
             else if( lighting_mode == LIGHTING_FROM_LIGHTMAP )
             {
@@ -1326,16 +1431,34 @@ void ScanLines()
             {
                 if( blending_mode == BLENDING_CONSTANT )
                 {
+#ifdef PSR_MASM32
+					__asm
+					{
+						movd mm1, color
+						punpcklbw mm1, mm0
+						mov edi, pixels
+						movd mm2, dword ptr[edi]
+						punpcklbw mm2, mm0
+						pmullw mm1, mm3//src_color*= constant_blend_factor
+						pmullw mm2, mm4//dst_color*= inv_constant_blend_factor
+						paddw mm1, mm2
+						psrlw mm1, 8
+						packuswb mm1, mm0
+						movd dword ptr[edi], mm1
+					}
+#else
                     pixels[0]= ( color[0] * constant_blend_factor + pixels[0] * inv_constant_blend_factor ) >> 8;
                     pixels[1]= ( color[1] * constant_blend_factor + pixels[1] * inv_constant_blend_factor ) >> 8;
                     pixels[2]= ( color[2] * constant_blend_factor + pixels[2] * inv_constant_blend_factor ) >> 8;
+#endif
                 }
                 else if( blending_mode == BLENDING_AVG )
                 {
-                    pixels[0]= ( pixels[0] + color[0] )>>1;
+                    /*pixels[0]= ( pixels[0] + color[0] )>>1;
                     pixels[1]= ( pixels[1] + color[1] )>>1;
-                    pixels[2]= ( pixels[2] + color[2] )>>1;
-					//*((int*)pixels)= (((*((int*)pixels))>>1)&0x7f7f7f7f) + (((*((int*)color))>>1)&0x7f7f7f7f);
+                    pixels[2]= ( pixels[2] + color[2] )>>1;*/
+					//fasetr method, but result can lost 1 in result
+					*((int*)pixels)= (((*((int*)pixels))>>1)&0x7f7f7f7f) + (((*((int*)color))>>1)&0x7f7f7f7f);
                 }
                 else if( blending_mode == BLENDING_SRC_ALPHA )
                 {
@@ -1428,6 +1551,14 @@ next_pixel:
         }
         inv_z_left+= d_inv_z_left;
     }//for y
+
+	//shutdown mmx mode
+#ifdef PSR_MASM32
+	if( lighting_mode == LIGHTING_PER_VERTEX_COLORED || blending_mode == BLENDING_CONSTANT )
+	{
+		__asm emms
+	}
+#endif
 }//ScanLines
 
 
@@ -2309,44 +2440,44 @@ extern "C"
 //world rendering functions
 void (*DrawWorldTriangleTextureNearestLightmapLinear)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
-void (*DrawWorldTriangleTextureNearestLightmapLiearRGBS)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+//void (*DrawWorldTriangleTextureNearestLightmapLiearRGBS)(char*buff)= Draw::DrawTriangleFromBuffer
+//< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 void (*DrawWorldTriangleTextureNearestLightmapColoredLinear)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 
 void (*DrawWorldTriangleTextureLinearLightmapLinear)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
-void (*DrawWorldTriangleTextureLinearLightmapLiearRGBS)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+//void (*DrawWorldTriangleTextureLinearLightmapLiearRGBS)(char*buff)= Draw::DrawTriangleFromBuffer
+//< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 void (*DrawWorldTriangleTextureLinearLightmapColoredLinear)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 
 void (*DrawWorldTriangleTextureFakeFilterLightmapLinear)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
-void (*DrawWorldTriangleTextureFakeFilterLightmapLiearRGBS)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+//void (*DrawWorldTriangleTextureFakeFilterLightmapLiearRGBS)(char*buff)= Draw::DrawTriangleFromBuffer
+//< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 void (*DrawWorldTriangleTextureFakeFilterLightmapColoredLinear)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 
 //world rendering functions with avg blend
 void (*DrawWorldTriangleTextureNearestLightmapLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
-void (*DrawWorldTriangleTextureNearestLightmapLiearRGBSBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+//void (*DrawWorldTriangleTextureNearestLightmapLiearRGBSBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+//< COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 void (*DrawWorldTriangleTextureNearestLightmapColoredLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 
 void (*DrawWorldTriangleTextureLinearLightmapLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
-void (*DrawWorldTriangleTextureLinearLightmapLiearRGBSBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+//void (*DrawWorldTriangleTextureLinearLightmapLiearRGBSBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+//< COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 void (*DrawWorldTriangleTextureLinearLightmapColoredLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 
 void (*DrawWorldTriangleTextureFakeFilterLightmapLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
-void (*DrawWorldTriangleTextureFakeFilterLightmapLiearRGBSBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+//void (*DrawWorldTriangleTextureFakeFilterLightmapLiearRGBSBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+//< COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 void (*DrawWorldTriangleTextureFakeFilterLightmapColoredLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 
@@ -2355,44 +2486,44 @@ void (*DrawWorldTriangleTextureFakeFilterLightmapColoredLinearBlend)(char*buff)=
 //world rendering functions PALETTIZED
 void (*DrawWorldTriangleTextureNearestPalettizedLightmapLinear)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
-void (*DrawWorldTriangleTextureNearestPalettizedLightmapLiearRGBS)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+//void (*DrawWorldTriangleTextureNearestPalettizedLightmapLiearRGBS)(char*buff)= Draw::DrawTriangleFromBuffer
+//< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 void (*DrawWorldTriangleTextureNearestPalettizedLightmapColoredLinear)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 
 void (*DrawWorldTriangleTextureLinearPalettizedLightmapLinear)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
-void (*DrawWorldTriangleTextureLinearPalettizedLightmapLiearRGBS)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+//void (*DrawWorldTriangleTextureLinearPalettizedLightmapLiearRGBS)(char*buff)= Draw::DrawTriangleFromBuffer
+//< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 void (*DrawWorldTriangleTextureLinearPalettizedLightmapColoredLinear)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 
 void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapLinear)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
-void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapLiearRGBS)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+//void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapLiearRGBS)(char*buff)= Draw::DrawTriangleFromBuffer
+//< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapColoredLinear)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 
 //world rendering functions with avg blend PALETTIZED
 void (*DrawWorldTriangleTextureNearestPalettizedLightmapLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
-void (*DrawWorldTriangleTextureNearestPalettizedLightmapLiearRGBSBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+//void (*DrawWorldTriangleTextureNearestPalettizedLightmapLiearRGBSBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+//< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 void (*DrawWorldTriangleTextureNearestPalettizedLightmapColoredLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_NEAREST, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 
 void (*DrawWorldTriangleTextureLinearPalettizedLightmapLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
-void (*DrawWorldTriangleTextureLinearPalettizedLightmapLiearRGBSBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+//void (*DrawWorldTriangleTextureLinearPalettizedLightmapLiearRGBSBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+//< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 void (*DrawWorldTriangleTextureLinearPalettizedLightmapColoredLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_LINEAR, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 
 void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
-void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapLiearRGBSBlend)(char*buff)= Draw::DrawTriangleFromBuffer
-< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+//void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapLiearRGBSBlend)(char*buff)= Draw::DrawTriangleFromBuffer
+//< COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_RGBS_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 void (*DrawWorldTriangleTextureFakeFilterPalettizedLightmapColoredLinearBlend)(char*buff)= Draw::DrawTriangleFromBuffer
 < COLOR_FROM_TEXTURE, TEXTURE_PALETTIZED_FAKE_FILTER, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_FROM_LIGHTMAP, LIGHTMAP_COLORED_LINEAR, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 
@@ -2519,7 +2650,7 @@ void (*DrawBeamTriangle)( char* buff )= Draw::DrawTriangleFromBuffer
 < COLOR_CONSTANT, TEXTURE_NONE, BLENDING_AVG, ALPHA_TEST_NONE, LIGHTING_NONE, LIGHTMAP_NEAREST, ADDITIONAL_EFFECT_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 
 void (*DrawParticleSprite)(int x0, int y0, int x1, int y1, fixed16_t depth)= Draw::DrawSprite
-< TEXTURE_NONE, BLENDING_CONSTANT, ALPHA_TEST_NONE, LIGHTING_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
+< TEXTURE_NONE, BLENDING_SRC_ALPHA, ALPHA_TEST_NONE, LIGHTING_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 void (*DrawParticleSpriteNoBlend)(int x0, int y0, int x1, int y1, fixed16_t depth)= Draw::DrawSprite
 < TEXTURE_NONE, BLENDING_NONE, ALPHA_TEST_NONE, LIGHTING_NONE, CURRENT_DEPTH_TEST_TYPE, true >;
 
