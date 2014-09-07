@@ -343,13 +343,79 @@ void TexelFetchLinear( fixed16_t u, fixed16_t v, unsigned char* out_color )
     y1= y+1;
     fixed16_t dx, dy, dx1, dy1;
     dx= ( u & 0xFFFF )>>8;//u - (x<<16);
-    dy= ( v & 0xFFFF )>>8;//v - (y<<16);
+    dy= ( v & 0xFFFF )>>1;
     dx1= 256 - dx;
-    dy1= 256 - dy;
+    dy1= 32768 - dy;
     x&= current_texture_size_x1;
     y&= current_texture_size_y1;
     x1&= current_texture_size_x1;
     y1&= current_texture_size_y1;
+#ifdef PSR_MMX_RASTERIZATION
+	PSR_ALIGN_8 unsigned short dx_v[4];
+	dx_v[0]= dx_v[1]= dx_v[2]= dx;
+	PSR_ALIGN_8 unsigned short dy_v[4];
+	dy_v[0]= dy_v[1]= dy_v[2]= dy;
+	PSR_ALIGN_8 unsigned short dx1_v[4];
+	dx1_v[0]= dx1_v[1]= dx1_v[2]= dx1;
+	PSR_ALIGN_8 unsigned short dy1_v[4];
+	dy1_v[0]= dy1_v[1]= dy1_v[2]= dy1;
+	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
+	{
+		dx_v[3]= dx; dy_v[3]= dy;
+		dx1_v[3]= dx1; dy1_v[3]= dy1;
+	}
+	y= (y<<current_texture_size_x_log2)<<2;
+	y1= (y1<<current_texture_size_x_log2)<<2;
+	__asm
+	{
+		/*
+	   mm1 x:y
+	   mm2 x1:y
+	   mm6 x:y1
+	   mm7 x1:y1
+	   */
+		mov esi, current_texture_data
+		add esi, y
+		mov ebx, x
+		movd mm1, dword ptr[ esi + ebx*4]
+		punpcklbw mm1, mm0
+
+		mov ebx, x1
+		movd mm2, dword ptr[ esi + ebx*4]
+		punpcklbw mm2, mm0
+
+		mov esi, current_texture_data
+		add esi, y1
+		mov ebx, x
+		movd mm6, dword ptr[ esi + ebx*4]
+		punpcklbw mm6, mm0
+
+		mov ebx, x1
+		movd mm7, dword ptr[ esi + ebx*4]
+		punpcklbw mm7, mm0
+
+		pmullw mm1, qword ptr[dx1_v]
+		pmullw mm2, qword ptr[dx_v]
+		pmullw mm6, qword ptr[dx1_v]
+		pmullw mm7, qword ptr[dx_v]
+
+		paddw mm1, mm2
+		paddw mm6, mm7
+
+		pmulhuw mm1, qword ptr[dy1_v]
+		pmulhuw mm6, qword ptr[dy_v]
+
+		paddw mm1, mm6
+		psrlw mm1, 7
+		packuswb mm1, mm0
+		mov edi, out_color
+		movd dword ptr[edi], mm1
+	}
+#else
+	dx= ( u & 0xFFFF )>>8;//u - (x<<16);
+    dy= ( v & 0xFFFF )>>8;//v - (y<<16);
+    dx1= 256 - dx;
+    dy1= 256 - dy;
 
     int s;
     int colors[16];
@@ -400,6 +466,7 @@ void TexelFetchLinear( fixed16_t u, fixed16_t v, unsigned char* out_color )
     out_color[2]= ( mixed_colors[2] * dy1 + mixed_colors[6] * dy ) >> 16;
 	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
 		out_color[3]= ( mixed_colors[3] * dy1 + mixed_colors[7] * dy ) >> 16;
+#endif
 }
 
 template< enum BlendingMode blending_mode, enum AlphaTestMode alpha_test_mode >
@@ -699,7 +766,10 @@ void DrawTextureRect( int x, int y, int u0, int v0, int u1, int v1 )
 	}
 }
 
-const static int dithering_shift_table[]= { 16384,0, 32768,49152, 49152,32768, 0,16384 };
+const static int dithering_shift_table[]= {
+16384,0,	 32768,49152,
+49152,32768, 0,16384 };
+
 
 template<
 enum TextureMode texture_mode,
@@ -710,27 +780,28 @@ enum DepthTestMode depth_test_mode,
 bool write_depth >
 void DrawSprite( int x0, int y0, int x1, int y1, fixed16_t sprite_in_depth )
 {
-#ifdef PSR_MASM32
+#ifdef PSR_MMX_RASTERIZATION
 	/*
 	mm0 is always constant and zero
 	mm1,mm2 nonconstant
 	mm3 - blend factor in short format
 	mm4 - inv blend factor in short format
 	*/
-
-	if( blending_mode == BLENDING_CONSTANT )
+	//temporary, remove mmx for blening
+	/*if( blending_mode == BLENDING_CONSTANT )
 	{
-		unsigned short blend_factor[]= { constant_blend_factor, constant_blend_factor, constant_blend_factor, constant_blend_factor };
-		unsigned short inv_blend_factor[]= { inv_constant_blend_factor, inv_constant_blend_factor, inv_constant_blend_factor, inv_constant_blend_factor };
+		PSR_ALIGN_8 unsigned short blend_factor[]= { constant_blend_factor, constant_blend_factor, constant_blend_factor, constant_blend_factor };
+		PSR_ALIGN_8 unsigned short inv_blend_factor[]= { inv_constant_blend_factor, inv_constant_blend_factor, inv_constant_blend_factor, inv_constant_blend_factor };
 		__asm movq mm3, qword ptr[blend_factor]
 		__asm movq mm4, qword ptr[inv_blend_factor]
 		__asm pxor mm0, mm0
-	}
-	else if( blending_mode == BLENDING_SRC_ALPHA )
+	}*/
+	if( texture_mode == TEXTURE_LINEAR )
 	{
 		__asm pxor mm0, mm0
 	}
-#endif
+#endif//PSR_MMX_RASTERIZATION
+
     int x_begin= FastIntClampToZero( x0 );
     int x_end= FastIntMin( x1, screen_size_x );
     int y= FastIntClampToZero( y0 );
@@ -750,7 +821,7 @@ void DrawSprite( int x0, int y0, int x1, int y1, fixed16_t sprite_in_depth )
 		|| texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER_MIPMAP ||  texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP )
         lod= FastIntLog2Clamp0( FastIntMax( du, dv ) >> 16 );
 
-    PSR_ALIGN_4 unsigned char color[4];
+    PSR_ALIGN_8 unsigned char color[4];
     unsigned char* pixels;
     depth_buffer_t* depth_p;
    // depth_buffer_t depth_z= sprite_in_depth >> PSR_DEPTH_SCALER_LOG2;
@@ -793,7 +864,7 @@ void DrawSprite( int x0, int y0, int x1, int y1, fixed16_t sprite_in_depth )
             //    TexelFetchNearestMipmapNoWarp( u>>16, v>>16, lod, color );
             else if( texture_mode == TEXTURE_FAKE_FILTER )
             {
-               	int ind= (x&1)|((y&1)<<1);
+               	int ind= ((x&1)|((y&1)<<1))<<1;
                 TexelFetchNearestNoWarp( (u+dithering_shift_table[ind+1])>>16, (v+dithering_shift_table[ind])>>16, color );
             }
             /*else if( texture_mode == TEXTURE_FAKE_FILTER_MIPMAP )
@@ -866,7 +937,8 @@ void DrawSprite( int x0, int y0, int x1, int y1, fixed16_t sprite_in_depth )
             {
                 if( blending_mode == BLENDING_CONSTANT )
                 {
-#ifdef PSR_MASM32
+#if 0 //remove mmx for blending
+//#ifdef PSR_MMX_RASTERIZATION
 					__asm
 					{
 						movd mm1, color
@@ -889,7 +961,8 @@ void DrawSprite( int x0, int y0, int x1, int y1, fixed16_t sprite_in_depth )
                 }
                 else if( blending_mode == BLENDING_SRC_ALPHA )
                 {
-#ifdef PSR_MASM32
+#if 0 //remove mmx for blending
+//#ifdef PSR_MMX_RASTERIZATION
 					unsigned short blend_factor[4]= { color[3], color[3], color[3] };
 					unsigned short inv_b= 255 - color[3];
 					unsigned short inv_blend_factor[4]= { inv_b, inv_b, inv_b };
@@ -955,8 +1028,9 @@ next_pixel:
 			v+= dv;
     }//y
 
-#ifdef PSR_MASM32
-	if( blending_mode == BLENDING_CONSTANT || blending_mode == BLENDING_SRC_ALPHA )
+#ifdef PSR_MMX_RASTERIZATION
+	//remove mmx for blending
+	if( /*blending_mode == BLENDING_CONSTANT || blending_mode == BLENDING_SRC_ALPHA ||*/ texture_mode == TEXTURE_LINEAR )
 	{
 		__asm emms
 	}
@@ -1068,26 +1142,27 @@ bool write_depth >
 void ScanLines()
 {
 	//mmx registers initialization
-#ifdef PSR_MASM32
+#ifdef PSR_MMX_RASTERIZATION
 	/*
 	mm0 is always constant and zero
 	mm1,mm2 nonconstant
 	mm3 - blend factor in short format
 	mm4 - inv blend factor in short format
 	*/
-	if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
+	if( lighting_mode == LIGHTING_PER_VERTEX_COLORED || texture_mode == TEXTURE_LINEAR )
 	{
 		__asm pxor mm0, mm0
 	}
-	if( blending_mode == BLENDING_CONSTANT )
+	//remove mmx blending
+	/*if( blending_mode == BLENDING_CONSTANT )
 	{
-		unsigned short blend_factor[4]= { constant_blend_factor, constant_blend_factor, constant_blend_factor };
-		unsigned short inv_blend_factor[4]= { inv_constant_blend_factor, inv_constant_blend_factor, inv_constant_blend_factor };
+		PSR_ALIGN_8 unsigned short blend_factor[4]= { constant_blend_factor, constant_blend_factor, constant_blend_factor };
+		PSR_ALIGN_8 unsigned short inv_blend_factor[4]= { inv_constant_blend_factor, inv_constant_blend_factor, inv_constant_blend_factor };
 		__asm pxor mm0, mm0
 		__asm movq mm3, qword ptr[blend_factor]
 		__asm movq mm4, qword ptr[inv_blend_factor]
-	}
-#endif
+	}*/
+#endif//PSR_MMX_RASTERIZATION
 
 	for( int y= y_begin; y<= y_end; y++, x_left+= dx_left, x_right+= dx_right )//scan lines
     {
@@ -1173,7 +1248,7 @@ void ScanLines()
 
 			}//if depth test
 
-			 PSR_ALIGN_4 unsigned char color[4];
+			 PSR_ALIGN_8 unsigned char color[4];
 #ifdef PSR_FAST_PERSECTIVE
             {
                 int i= x>>PSR_LINE_SEGMENT_SIZE_LOG2, d= x & ( PSR_LINE_SEGMENT_SIZE-1);
@@ -1223,7 +1298,7 @@ void ScanLines()
 				}
                 else if( texture_mode == TEXTURE_FAKE_FILTER )
                 {
-					int ind= (x&1)|((y&1)<<1);
+					int ind= ((x&1)|((y&1)<<1))<<1;
 					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
 					{
 						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
@@ -1282,7 +1357,7 @@ void ScanLines()
 				}
 				else if( texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER )
 				{
-					int ind= (x&1)|((y&1)<<1);
+					int ind= ((x&1)|((y&1)<<1))<<1;
 					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
 					{
 						fixed16_t u= Fixed16Mul( line_tc[0], final_z );
@@ -1348,8 +1423,8 @@ void ScanLines()
             }
 			else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
             {
-#ifdef PSR_MASM32
-				unsigned short final_light[4];
+#ifdef PSR_MMX_RASTERIZATION
+				PSR_ALIGN_8 unsigned short final_light[4];
 				__asm
 				{
 					mov ebx, final_z
@@ -1431,7 +1506,8 @@ void ScanLines()
             {
                 if( blending_mode == BLENDING_CONSTANT )
                 {
-#ifdef PSR_MASM32
+#if 0//remove mmx blending
+//#ifdef PSR_MMX_RASTERIZATION
 					__asm
 					{
 						movd mm1, color
@@ -1457,7 +1533,7 @@ void ScanLines()
                     /*pixels[0]= ( pixels[0] + color[0] )>>1;
                     pixels[1]= ( pixels[1] + color[1] )>>1;
                     pixels[2]= ( pixels[2] + color[2] )>>1;*/
-					//fasetr method, but result can lost 1 in result
+					//fasetr method, but can lost 1 in result
 					*((int*)pixels)= (((*((int*)pixels))>>1)&0x7f7f7f7f) + (((*((int*)color))>>1)&0x7f7f7f7f);
                 }
                 else if( blending_mode == BLENDING_SRC_ALPHA )
@@ -1553,8 +1629,9 @@ next_pixel:
     }//for y
 
 	//shutdown mmx mode
-#ifdef PSR_MASM32
-	if( lighting_mode == LIGHTING_PER_VERTEX_COLORED || blending_mode == BLENDING_CONSTANT )
+#ifdef PSR_MMX_RASTERIZATION
+	//make emms in all cases, when uses mmx
+	if( lighting_mode == LIGHTING_PER_VERTEX_COLORED || texture_mode == TEXTURE_LINEAR )
 	{
 		__asm emms
 	}

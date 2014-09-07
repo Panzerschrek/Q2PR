@@ -122,6 +122,53 @@ extern "C" void PRast_AddFullscreenExponentialFog( float fog_half_distance, cons
 	}//if interpolate values from fog table
 	else
 	{
+#ifdef PSR_MMX_RASTERIZATION
+		PSR_ALIGN_8 unsigned short blend_factor[4];
+		PSR_ALIGN_8 unsigned short inv_blend_factor[4];
+		PSR_ALIGN_8 unsigned short fog_color[4]= { color[0], color[1], color[2], 0 };
+		__asm
+		{
+			mov eax, screen_size_x
+			imul eax, screen_size_y
+			mov ecx, eax//counter
+			mov esi, screen_buffer
+			mov edi, depth_buffer
+			/*
+			mm0 - zero
+			mm1 - fog color
+			*/
+			movq mm1, fog_color
+			pxor mm0, mm0
+next_pixel:
+			movzx edx, word ptr[edi]
+			shr edx, 4 //log2( depth2table_convert_k ). Must be changed, if depth2table_convert_k changed
+			movzx eax, byte ptr[ fog_table + edx ]
+			mov edx, 255
+			mov word ptr[blend_factor  ], ax
+			mov word ptr[blend_factor+2], ax
+			mov word ptr[blend_factor+4], ax
+			sub edx, eax
+			mov word ptr[inv_blend_factor  ], dx
+			mov word ptr[inv_blend_factor+2], dx
+			mov word ptr[inv_blend_factor+4], dx
+
+			movd mm2, dword ptr[esi]
+			punpcklbw mm2, mm0
+			pmullw mm2, qword ptr[inv_blend_factor]
+			movq mm3, mm1
+			pmullw mm3, qword ptr[blend_factor]
+			paddw mm2, mm3
+			psrlw mm2, 8
+			packuswb mm2, mm0
+			movd dword ptr[esi], mm2
+
+			add esi, 4
+			add edi, 2
+			loop next_pixel
+
+			emms
+		}
+#else
 		for( int i= 0, i_end= screen_size_x * screen_size_y * 4; i!= i_end; i+=4 )
 		{
 			int a= fog_table[ depth_buffer[i>>2] / depth2table_convert_k ];
@@ -130,6 +177,7 @@ extern "C" void PRast_AddFullscreenExponentialFog( float fog_half_distance, cons
 			screen_buffer[i+1]= ( screen_buffer[i+1] * inv_a + color[1] * a )>>8;
 			screen_buffer[i+2]= ( screen_buffer[i+2] * inv_a + color[2] * a )>>8;
 		}
+#endif
 	}//if nearest fetch from fog table
 }
 

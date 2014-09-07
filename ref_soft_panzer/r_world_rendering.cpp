@@ -257,8 +257,10 @@ triangle_draw_func_t GetWorldCachedFarDrawFunc( bool is_blend )
 
 int GetTexCoordNearShift()
 {
-	if( strcmp( r_texture_mode->string, "texture_linear" ) == 0  || strcmp( r_texture_mode->string, "texture_fake_filter" ) == 0 )
+	if( strcmp( r_texture_mode->string, "texture_linear" ) == 0 )
 		return -32768;
+	else if(  strcmp( r_texture_mode->string, "texture_fake_filter" ) == 0 )
+		return -32768+8192;
 	else
 		return 0;
 }
@@ -988,7 +990,7 @@ void DrawTree_r( mnode_t* node, vec3_t cam_pos )
 				continue;
 
 			surfaces_pushed++;
-			if( (surf->flags&SURF_DRAWSKY) != 0 )
+			if( (surf->flags & SURF_DRAWSKY) != 0 )
 			{
 				if( sky_surfaces_chain.first_surface == NULL )
 					sky_surfaces_chain.first_surface= sky_surfaces_chain.last_surface= surf;
@@ -1017,18 +1019,6 @@ void DrawTree_r( mnode_t* node, vec3_t cam_pos )
 			}//if transparent
 			else
 			{
-				//texture chain populating
-				/*int tex_ind= R_GetImageIndex(surf->texinfo->image);
-				if( texture_surfaces_chain.first_surface[tex_ind] == NULL )
-				{
-					texture_surfaces_chain.first_surface[tex_ind]=
-					texture_surfaces_chain.last_surface[tex_ind]= surf;
-				}
-				else
-				{
-					texture_surfaces_chain.last_surface[tex_ind]->nextalphasurface= surf;
-					texture_surfaces_chain.last_surface[tex_ind]= surf;
-				}*/
 				if( world_surfaces_chain.first_surface == NULL )
 				{
 					world_surfaces_chain.last_surface= world_surfaces_chain.first_surface= surf;

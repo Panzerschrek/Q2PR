@@ -36,6 +36,11 @@ typedef unsigned short depth_buffer_t;
 //#define PSR_MASM64 1
 //#define PSR_USE_MMX
 
+
+#ifdef PSR_MASM32
+#define PSR_MMX_RASTERIZATION
+#endif
+
 #define PSR_MAX_SCREEN_WIDTH 4096
 #define PSR_MAX_SCREEN_HEIGHT 4096
 

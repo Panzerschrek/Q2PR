@@ -718,7 +718,6 @@ void Mod_LoadFaces (lump_t *l)
 			out->samples = loadmodel->lightdata + i*light_texel_size/3;
 		
 	// set the drawing flags flag
-		
 		if (!out->texinfo->image)
 			continue;
 		if (out->texinfo->flags & SURF_SKY)

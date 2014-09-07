@@ -151,7 +151,8 @@ unsigned char* current_lightmap_data;
 int current_lightmap_size_x;
 int lightmap_dy, lightmap_dy1;// y * lightmap_width * lightmap_texel_size
 int lightmap_y, lightmap_y1;
-unsigned short lightmap_dy_v[4], lightmap_dy1_v[4];// dy\dy1 in vector form, form fast mmx multiplication
+PSR_ALIGN_8 unsigned short lightmap_dy_v[4];
+PSR_ALIGN_8 unsigned short lightmap_dy1_v[4];// dy\dy1 in vector form, form fast mmx multiplication
 
 
 #ifdef PSR_MASM32
@@ -162,8 +163,9 @@ unsigned short lightmap_dy_v[4], lightmap_dy1_v[4];// dy\dy1 in vector form, for
 inline void SetupColoredLightmapDYVectors()
 {
 #ifdef SURFACE_GEN_USE_MMX
-	lightmap_dy_v[0]= lightmap_dy_v[1]= lightmap_dy_v[2]= lightmap_dy;
-	lightmap_dy1_v[0]= lightmap_dy1_v[1]= lightmap_dy1_v[2]= lightmap_dy1;
+	//*128 - for better precice
+	lightmap_dy_v[0]= lightmap_dy_v[1]= lightmap_dy_v[2]= lightmap_dy * 128;
+	lightmap_dy1_v[0]= lightmap_dy1_v[1]= lightmap_dy1_v[2]= lightmap_dy1 * 128;
 #endif
 }
 
@@ -177,8 +179,10 @@ inline void LightmapColoredFetch( fixed16_t u, unsigned short* out_lightmap )
     dx= u & 0xFF;
     dx1= 256 - dx;
 #ifdef SURFACE_GEN_USE_MMX
-	unsigned short dx_v[4]; dx_v[0]= dx_v[1]= dx_v[2]= dx;
-	unsigned short dx1_v[4]; dx1_v[0]= dx1_v[1]= dx1_v[2]= dx1;
+	PSR_ALIGN_8 unsigned short dx_v[4];
+	dx_v[0]= dx_v[1]= dx_v[2]= dx;
+	PSR_ALIGN_8 unsigned short dx1_v[4];
+	dx1_v[0]= dx1_v[1]= dx1_v[2]= dx1;
    __asm
    {
 	   /*
@@ -222,7 +226,8 @@ inline void LightmapColoredFetch( fixed16_t u, unsigned short* out_lightmap )
 		pmulhuw mm2, qword ptr[lightmap_dy1_v]
 		pmulhuw mm4, qword ptr[lightmap_dy_v]
 
-		paddw mm4, mm2//result into MM4
+		paddw mm4, mm2
+		psrlw mm4, 7//result into MM4
    }
 #else SURFACE_GEN_USE_MMX
 	int s;
@@ -308,6 +313,8 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 	int min_y= (surf->texturemins[1]>>mip) -1;//-1 for border
 
 	const int lightmap_texel_size_log2= ( lightmap_mode == LIGHTMAP_COLORED_LINEAR ) ? 2 : 0;
+
+	PSR_ALIGN_8 unsigned char color[4];
 	
 	for( int y= 1, y_end= (surf->extents[1]>>mip)+2; y< y_end; y++ )
 	{
@@ -322,10 +329,9 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 		lightmap_dy1= 256 - lightmap_dy;
 		lightmap_y= ( current_lightmap_size_x * ((y-1)>>(4-mip)) ) <<lightmap_texel_size_log2;
 		lightmap_y1= lightmap_y + (current_lightmap_size_x<<lightmap_texel_size_log2);
-		SetupColoredLightmapDYVectors();
+		if( lightmap_mode == LIGHTMAP_COLORED_LINEAR ) SetupColoredLightmapDYVectors();
 		for( int x= 1, x_end= (surf->extents[0]>>mip)+2; x< x_end; x++, dst+= 4 )
 		{
-			unsigned char color[4];
 			if( texture_is_palettized )
 			{
 				int color_index= src[ (x+min_x)&tex_size_x1 ];
@@ -377,10 +383,9 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 		lightmap_dy1= 256;
 		lightmap_y= 0;
 		lightmap_y1= lightmap_y + (current_lightmap_size_x<<lightmap_texel_size_log2);
-		SetupColoredLightmapDYVectors();
+		if( lightmap_mode == LIGHTMAP_COLORED_LINEAR ) SetupColoredLightmapDYVectors();
 		for( int x= 1, x_end= (surf->extents[0]>>mip)+2; x< x_end; x++, dst+= 4 )
 		{
-			unsigned char color[4];
 			if( texture_is_palettized )
 			{
 				int color_index= src[ (x+min_x)&tex_size_x1 ];
@@ -392,7 +397,6 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 			{
 				unsigned short light[4];
 				LightmapColoredFetch( (x-1)<<(8-4+mip), light ); 
-
 #ifdef SURFACE_GEN_USE_MMX
 				__asm
 				{
@@ -433,10 +437,9 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 		lightmap_dy1= 256 - lightmap_dy;
 		lightmap_y= ( ((y-2)>>(4-mip)) * current_lightmap_size_x )<<lightmap_texel_size_log2;
 		lightmap_y1= lightmap_y + (current_lightmap_size_x<<lightmap_texel_size_log2);
-		SetupColoredLightmapDYVectors();
+		if( lightmap_mode == LIGHTMAP_COLORED_LINEAR ) SetupColoredLightmapDYVectors();
 		for( int x= 1, x_end= (surf->extents[0]>>mip)+2; x< x_end; x++, dst+= 4 )
 		{
-			unsigned char color[4];
 			if( texture_is_palettized )
 			{
 				int color_index= src[ (x+min_x)&tex_size_x1 ];
@@ -479,19 +482,18 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 	//left border
 	{
 		int x= 0;
-		int tc_x= (x+min_x) & tex_size_x1;
+		int tc_x= (x+min_x) & tex_size_x1; if( !texture_is_palettized ) tc_x*= 4;
 		unsigned char* dst= surf_cache->data + ( x + (1<<surf_cache->width_log2) ) * 4;
-		const unsigned char* src= tex_data + tc_x*4;
+		const unsigned char* src= tex_data + tc_x;
 		for( int y= 1, y_end= (surf->extents[1]>>mip)+2; y< y_end; y++, dst+= 4 << surf_cache->width_log2 )
 		{
 			int tc_y= (y+min_y) & tex_size_y1;
-			unsigned char color[4];
 	
 			lightmap_dy=  ((y-1)<<(16-4-8+mip)) & 255;
 			lightmap_dy1= 256 - lightmap_dy;
 			lightmap_y= ( ((y-1)>>(4-mip)) * current_lightmap_size_x )<<lightmap_texel_size_log2;
 			lightmap_y1= lightmap_y + (current_lightmap_size_x<<lightmap_texel_size_log2);
-			SetupColoredLightmapDYVectors();
+			if( lightmap_mode == LIGHTMAP_COLORED_LINEAR ) SetupColoredLightmapDYVectors();
 			if( texture_is_palettized )
 			{
 				int color_index= src[ tc_y<<tex_size_x_log2 ];
@@ -534,19 +536,18 @@ void GenerateSurfaceMip( msurface_t* surf, panzer_surf_cache_t* surf_cache )
 	//right border
 	{
 		int x= (surf->extents[0]>>mip)+1;
-		int tc_x= (x+min_x) & tex_size_x1;
+		int tc_x= (x+min_x) & tex_size_x1; if( !texture_is_palettized ) tc_x*= 4;
 		unsigned char* dst= surf_cache->data + ( x + (1<<surf_cache->width_log2) ) * 4;
-		const unsigned char* src= tex_data + tc_x*4;
+		const unsigned char* src= tex_data + tc_x;
 		for( int y= 1, y_end= (surf->extents[1]>>mip)+2; y< y_end; y++, dst+= 4 << surf_cache->width_log2 )
 		{
 			int tc_y= (y+min_y) & tex_size_y1;
-			unsigned char color[4];
 	
 			lightmap_dy=  ((y-1)<<(16-4-8+mip)) & 255;
 			lightmap_dy1= 256 - lightmap_dy;
 			lightmap_y= ( ((y-1)>>(4-mip)) * current_lightmap_size_x )<<lightmap_texel_size_log2;
 			lightmap_y1= lightmap_y + (current_lightmap_size_x<<lightmap_texel_size_log2);
-			SetupColoredLightmapDYVectors();
+			if( lightmap_mode == LIGHTMAP_COLORED_LINEAR ) SetupColoredLightmapDYVectors();
 			if( texture_is_palettized )
 			{
 				int color_index= src[ tc_y<<tex_size_x_log2 ];
