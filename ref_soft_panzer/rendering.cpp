@@ -27,8 +27,9 @@ void DrawBeam( entity_t* ent, m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam_pos );
 CommandBuffer command_buffer;//for vertex processing
 CommandBuffer back_command_buffer;//for rasterization
 qmutex_t frontend_framebuffer_mutex;
+qsemaphore_t command_buffer_semaphore;
 //qmutex_t backend_framebuffer_mutex;
-qmutex_t frontend_front_command_buffer_mutex;
+//qmutex_t frontend_front_command_buffer_mutex;
 //qmutex_t backend_front_command_buffer_mutex;
 #define FRAMEBUFFER_MUTEX_NAME		"q2_panzer_soft_rast_framebuffer_mutex"
 #define COMMAND_BUFFER_MUTEX_NAME	"q2_panzer_soft_rast_front_command_buffer_mutex"
@@ -41,7 +42,7 @@ qthread_t backend_thread;
 /*
 ----char buffer-------
 */
-#define MAX_BUFFER_CHARS 8192
+/*#define MAX_BUFFER_CHARS 8192
 struct CharBuffer
 {
 	unsigned char char_buffer[MAX_BUFFER_CHARS];
@@ -50,7 +51,7 @@ struct CharBuffer
 };
 
 CharBuffer* front_chars;
-CharBuffer* back_chars;
+CharBuffer* back_chars;*/
 Texture* console_tex= NULL;
 void DrawCharString( int x, int y, const char* str );
 
@@ -251,6 +252,8 @@ extern "C" unsigned int __stdcall PR_MainBackEndFunc( void* unused_param )
 		ComOut_DoCommands( back_command_buffer.buffer, back_command_buffer.current_pos );
 		Sys_MutexUnlock( &frontend_framebuffer_mutex );
 
+		Sys_SemaphoreWait( &command_buffer_semaphore );
+
 		//Sys_MutexLock( &frontend_front_command_buffer_mutex );
 		//wait for command buffer swapping
 		//Sys_MutexUnlock( &frontend_front_command_buffer_mutex );
@@ -270,20 +273,19 @@ extern "C" void PR_InitRendering()
 
 	if( use_multithreading )
 	{
-		Sys_CreateMutex( &frontend_front_command_buffer_mutex );
+		//Sys_CreateMutex( &frontend_front_command_buffer_mutex );
 		Sys_CreateMutex( &frontend_framebuffer_mutex );
+		Sys_CreateSemaphore( &command_buffer_semaphore, "q2_sem" );
 	}
 	memset(&backend_thread, sizeof(qthread_t), 0 );
 
 	memset( &fps_calc, 0, sizeof(fps_calc_t) );
 
-	//front_chars= (CharBuffer*) malloc( sizeof(CharBuffer) );
-	//back_chars= (CharBuffer*) malloc( sizeof(CharBuffer) );
-	front_chars= new CharBuffer;
-	back_chars= new CharBuffer;
+	//front_chars= new CharBuffer;
+	//back_chars= new CharBuffer;
 
-	front_chars->char_count= 0;
-	back_chars->char_count= 0;
+	//front_chars->char_count= 0;
+	//back_chars->char_count= 0;
 
 	command_buffer.buffer= Com_ResizeCommandBuffer( NULL, 0, 1024*1024*3, &command_buffer.size );
 	back_command_buffer.buffer= Com_ResizeCommandBuffer( NULL, 0, 1024*1024*3, &back_command_buffer.size );
@@ -304,7 +306,7 @@ extern "C" void PR_ShutdownRendering()
 		Sys_DestroyThread(backend_thread);
 		Sys_DestroyMutex(&frontend_framebuffer_mutex);
 	//	Sys_DestroyMutex(&backend_framebuffer_mutex);
-		Sys_DestroyMutex(&frontend_front_command_buffer_mutex);
+		//Sys_DestroyMutex(&frontend_front_command_buffer_mutex);
 	//	Sys_DestroyMutex(&backend_front_command_buffer_mutex);
 
 		/*backend_thread.thread_handle= 0;
@@ -318,8 +320,8 @@ extern "C" void PR_ShutdownRendering()
 	delete[] command_buffer.buffer;
 	delete[] back_command_buffer.buffer;
 
-	delete front_chars;
-	delete back_chars;
+	//delete front_chars;
+	//delete back_chars;
 }
 
 extern "C" void PR_LockFramebuffer()
@@ -346,6 +348,8 @@ extern "C" void PR_SwapCommandBuffers()
 {
 	R_SwapLightmapBuffers();
 
+	CalculateAndShowFPS();
+
 	//char statistic_str[128];
 	//sprintf( statistic_str, "command buffer size: %dkb\nparticles: %d", command_buffer.current_pos>>10, r_newrefdef.num_particles );
 	//DrawCharString( 8, 16, statistic_str );
@@ -370,8 +374,6 @@ extern "C" void PR_SwapCommandBuffers()
 			(char*)command_buffer.buffer + command_buffer.current_pos );
 	}
 
-	CalculateAndShowFPS();
-
 	if( use_multithreading )
 	{
 		Sys_MutexLock( &frontend_framebuffer_mutex );
@@ -380,17 +382,17 @@ extern "C" void PR_SwapCommandBuffers()
 		back_command_buffer= tmp_com_buf;
 
 		//swap char buffers
-		CharBuffer* tmp= front_chars;
-		front_chars= back_chars;
-		back_chars= tmp;
-		front_chars->char_count= 0;
+		//CharBuffer* tmp= front_chars;
+		//front_chars= back_chars;
+		//back_chars= tmp;
+		//front_chars->char_count= 0;
 	}
 	else
 	{
-		CharBuffer* tmp= front_chars;
-		front_chars= back_chars;
-		back_chars= tmp;
-		front_chars->char_count= 0;
+		//CharBuffer* tmp= front_chars;
+		//front_chars= back_chars;
+		//back_chars= tmp;
+		//front_chars->char_count= 0;
 		ComOut_DoCommands( command_buffer.buffer, command_buffer.current_pos );
 	}
 
@@ -401,8 +403,10 @@ extern "C" void PR_SwapCommandBuffers()
 extern "C" void PR_EndBufferSwapping()
 {
 	if(use_multithreading)
-	{Sys_MutexUnlock( &frontend_framebuffer_mutex );
-		Sys_MutexUnlock( &frontend_front_command_buffer_mutex );
+	{
+		Sys_MutexUnlock( &frontend_framebuffer_mutex );
+		Sys_SemaphoreRelease( &command_buffer_semaphore );
+		//Sys_MutexUnlock( &frontend_front_command_buffer_mutex );
 
 		if( backend_thread.thread_handle == 0 )
 			backend_thread= Sys_CreateThread( PR_MainBackEndFunc, NULL );
@@ -413,7 +417,7 @@ extern "C" void PR_BeginFrame()
 {
 	if(use_multithreading)
 	{
-		Sys_MutexLock( &frontend_front_command_buffer_mutex );
+		//Sys_MutexLock( &frontend_front_command_buffer_mutex );
 	}
 }
 
@@ -1062,6 +1066,6 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 		(char*)command_buffer.buffer + command_buffer.current_pos, clear_color );
 	}*/
 
-	if( use_multithreading)
-		DrawCharString(8, 32, "multithreading" );
+	//if( use_multithreading)
+	//	DrawCharString(8, 32, "multithreading" );
 }

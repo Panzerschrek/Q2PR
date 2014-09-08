@@ -232,7 +232,6 @@ inline void LightmapColoredFetch( fixed16_t u, unsigned short* out_lightmap )
 #else SURFACE_GEN_USE_MMX
 	int s;
     int colors[12];
-    int mixed_colors[6];
 
     s= (x<<2) + lightmap_y;
     colors[ 0]= current_lightmap_data[s+0];
@@ -251,16 +250,16 @@ inline void LightmapColoredFetch( fixed16_t u, unsigned short* out_lightmap )
     colors[10]= current_lightmap_data[s+1];
     colors[11]= current_lightmap_data[s+2];
 
-    mixed_colors[0]= ( colors[ 0] * dx1 + colors[ 3] * dx );
-    mixed_colors[1]= ( colors[ 1] * dx1 + colors[ 4] * dx );
-    mixed_colors[2]= ( colors[ 2] * dx1 + colors[ 5] * dx );
+    colors[0]= ( colors[ 0] * dx1 + colors[ 3] * dx );
+    colors[1]= ( colors[ 1] * dx1 + colors[ 4] * dx );
+    colors[2]= ( colors[ 2] * dx1 + colors[ 5] * dx );
 
-    mixed_colors[3]= ( colors[ 6] * dx1 + colors[ 9] * dx );
-    mixed_colors[4]= ( colors[ 7] * dx1 + colors[10] * dx );
-    mixed_colors[5]= ( colors[ 8] * dx1 + colors[11] * dx );
-    out_lightmap[0]= ( mixed_colors[0] * lightmap_dy1 + mixed_colors[3] * lightmap_dy ) >> 16;
-    out_lightmap[1]= ( mixed_colors[1] * lightmap_dy1 + mixed_colors[4] * lightmap_dy ) >> 16;
-    out_lightmap[2]= ( mixed_colors[2] * lightmap_dy1 + mixed_colors[5] * lightmap_dy ) >> 16;
+    colors[3]= ( colors[ 6] * dx1 + colors[ 9] * dx );
+    colors[4]= ( colors[ 7] * dx1 + colors[10] * dx );
+    colors[5]= ( colors[ 8] * dx1 + colors[11] * dx );
+    out_lightmap[0]= ( colors[0] * lightmap_dy1 + colors[3] * lightmap_dy ) >> 16;
+    out_lightmap[1]= ( colors[1] * lightmap_dy1 + colors[4] * lightmap_dy ) >> 16;
+    out_lightmap[2]= ( colors[2] * lightmap_dy1 + colors[5] * lightmap_dy ) >> 16;
 #endif
 }
 
@@ -275,15 +274,15 @@ inline unsigned char LightmapFetch( fixed16_t u )
     dx1= 256 - dx;
 
     int lights[4];
-    int mixed_lights[2];
+
 	lights[0]= current_lightmap_data[ x + lightmap_y  ];
 	lights[1]= current_lightmap_data[ x1+ lightmap_y  ];
 	lights[2]= current_lightmap_data[ x + lightmap_y1 ];
 	lights[3]= current_lightmap_data[ x1+ lightmap_y1 ];
-    mixed_lights[0]= ( lights[0] * dx1 + lights[1] * dx );
-    mixed_lights[1]= ( lights[2] * dx1 + lights[3] * dx );
+    lights[0]= ( lights[0] * dx1 + lights[1] * dx );
+    lights[1]= ( lights[2] * dx1 + lights[3] * dx );
 
-	return ( mixed_lights[0] * lightmap_dy1 + mixed_lights[1] * lightmap_dy ) >> 16;
+	return ( lights[0] * lightmap_dy1 + lights[1] * lightmap_dy ) >> 16;
 }
 
 

@@ -342,15 +342,18 @@ void TexelFetchLinear( fixed16_t u, fixed16_t v, unsigned char* out_color )
     x1= x+1;
     y1= y+1;
     fixed16_t dx, dy, dx1, dy1;
-    dx= ( u & 0xFFFF )>>8;//u - (x<<16);
-    dy= ( v & 0xFFFF )>>1;
-    dx1= 256 - dx;
-    dy1= 32768 - dy;
     x&= current_texture_size_x1;
     y&= current_texture_size_y1;
     x1&= current_texture_size_x1;
     y1&= current_texture_size_y1;
+	y= (y<<current_texture_size_x_log2)<<2;
+	y1= (y1<<current_texture_size_x_log2)<<2;
 #ifdef PSR_MMX_RASTERIZATION
+	dx= ( u & 0xFFFF )>>8;
+    dy= ( v & 0xFFFF )>>1;
+    dx1= 256 - dx;
+    dy1= 32768 - dy;
+
 	PSR_ALIGN_8 unsigned short dx_v[4];
 	dx_v[0]= dx_v[1]= dx_v[2]= dx;
 	PSR_ALIGN_8 unsigned short dy_v[4];
@@ -364,8 +367,6 @@ void TexelFetchLinear( fixed16_t u, fixed16_t v, unsigned char* out_color )
 		dx_v[3]= dx; dy_v[3]= dy;
 		dx1_v[3]= dx1; dy1_v[3]= dy1;
 	}
-	y= (y<<current_texture_size_x_log2)<<2;
-	y1= (y1<<current_texture_size_x_log2)<<2;
 	__asm
 	{
 		/*
@@ -419,53 +420,48 @@ void TexelFetchLinear( fixed16_t u, fixed16_t v, unsigned char* out_color )
 
     int s;
     int colors[16];
-    int mixed_colors[8];
 
-    s= x | ( y << current_texture_size_x_log2 );
-    s<<= 2;
+    s= (x<<2) | y;
     colors[ 0]= current_texture_data[s+0];
     colors[ 1]= current_texture_data[s+1];
     colors[ 2]= current_texture_data[s+2];
     if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
 		colors[ 3]= current_texture_data[s+3];
-    s= x1 | ( y << current_texture_size_x_log2 );
-    s<<= 2;
+	s= (x1<<2) | y;
     colors[ 4]= current_texture_data[s+0];
     colors[ 5]= current_texture_data[s+1];
     colors[ 6]= current_texture_data[s+2];
 	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
 		colors[ 7]= current_texture_data[s+3];
-    s= x | ( y1 << current_texture_size_x_log2 );
-    s<<= 2;
+    s= (x<<2)|y1;
     colors[ 8]= current_texture_data[s+0];
     colors[ 9]= current_texture_data[s+1];
     colors[10]= current_texture_data[s+2];
 	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
 		colors[11]= current_texture_data[s+3];
-    s= x1 | ( y1 << current_texture_size_x_log2 );
-    s<<= 2;
+    s= (x1<<2)|y1;
     colors[12]= current_texture_data[s+0];
     colors[13]= current_texture_data[s+1];
     colors[14]= current_texture_data[s+2];
 	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
 		colors[15]= current_texture_data[s+3];
 
-    mixed_colors[0]= ( colors[ 0] * dx1 + colors[ 4] * dx );// >> 16;
-    mixed_colors[1]= ( colors[ 1] * dx1 + colors[ 5] * dx );// >> 16;
-    mixed_colors[2]= ( colors[ 2] * dx1 + colors[ 6] * dx );// >> 16;
+    colors[0]= ( colors[ 0] * dx1 + colors[ 4] * dx );
+    colors[1]= ( colors[ 1] * dx1 + colors[ 5] * dx );
+    colors[2]= ( colors[ 2] * dx1 + colors[ 6] * dx );
 	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
-		mixed_colors[3]= ( colors[ 3] * dx1 + colors[ 7] * dx );// >> 16;
-    mixed_colors[4]= ( colors[ 8] * dx1 + colors[12] * dx );// >> 16;
-    mixed_colors[5]= ( colors[ 9] * dx1 + colors[13] * dx );// >> 16;
-    mixed_colors[6]= ( colors[10] * dx1 + colors[14] * dx );// >> 16;
+		colors[3]= ( colors[ 3] * dx1 + colors[ 7] * dx );
+    colors[4]= ( colors[ 8] * dx1 + colors[12] * dx );
+    colors[5]= ( colors[ 9] * dx1 + colors[13] * dx );
+    colors[6]= ( colors[10] * dx1 + colors[14] * dx );
 	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
-		mixed_colors[7]= ( colors[11] * dx1 + colors[15] * dx );// >> 16;
+		colors[7]= ( colors[11] * dx1 + colors[15] * dx );
 
-    out_color[0]= ( mixed_colors[0] * dy1 + mixed_colors[4] * dy ) >> 16;
-    out_color[1]= ( mixed_colors[1] * dy1 + mixed_colors[5] * dy ) >> 16;
-    out_color[2]= ( mixed_colors[2] * dy1 + mixed_colors[6] * dy ) >> 16;
+    out_color[0]= ( colors[0] * dy1 + colors[4] * dy ) >> 16;
+    out_color[1]= ( colors[1] * dy1 + colors[5] * dy ) >> 16;
+    out_color[2]= ( colors[2] * dy1 + colors[6] * dy ) >> 16;
 	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
-		out_color[3]= ( mixed_colors[3] * dy1 + mixed_colors[7] * dy ) >> 16;
+		out_color[3]= ( colors[3] * dy1 + colors[7] * dy ) >> 16;
 #endif
 }
 
@@ -489,30 +485,31 @@ void TexelFetchLinearPlaettized( fixed16_t u, fixed16_t v, unsigned char* out_co
 
     int s;
     int colors[16];
-    int mixed_colors[8];
+	y<<= current_texture_size_x_log2;
+	y1<<= current_texture_size_x_log2;
 
-    s= x | ( y << current_texture_size_x_log2 );
+    s= x | y;
 	s= current_texture_data[s]<<2;
     colors[ 0]= current_texture_palette[s+0];
     colors[ 1]= current_texture_palette[s+1];
     colors[ 2]= current_texture_palette[s+2];
 	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
 		colors[ 3]= current_texture_palette[s+3];
-    s= x1 | ( y << current_texture_size_x_log2 );
+	s= x1 | y;
     s= current_texture_data[s]<<2;
     colors[ 4]= current_texture_palette[s+0];
     colors[ 5]= current_texture_palette[s+1];
     colors[ 6]= current_texture_palette[s+2];
 	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
 		colors[ 7]= current_texture_palette[s+3];
-    s= x | ( y1 << current_texture_size_x_log2 );
+    s= x | y1;
 	s= current_texture_data[s]<<2;
     colors[ 8]= current_texture_palette[s+0];
     colors[ 9]= current_texture_palette[s+1];
     colors[10]= current_texture_palette[s+2];
 	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
 		colors[11]= current_texture_palette[s+3];
-    s= x1 | ( y1 << current_texture_size_x_log2 );
+    s= x1 | y1;
 	s= current_texture_data[s]<<2;
     colors[12]= current_texture_palette[s+0];
     colors[13]= current_texture_palette[s+1];
@@ -520,22 +517,22 @@ void TexelFetchLinearPlaettized( fixed16_t u, fixed16_t v, unsigned char* out_co
 	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
 		colors[15]= current_texture_palette[s+3];
 
-    mixed_colors[0]= ( colors[ 0] * dx1 + colors[ 4] * dx );
-    mixed_colors[1]= ( colors[ 1] * dx1 + colors[ 5] * dx );
-    mixed_colors[2]= ( colors[ 2] * dx1 + colors[ 6] * dx );
+    colors[0]= ( colors[ 0] * dx1 + colors[ 4] * dx );
+    colors[1]= ( colors[ 1] * dx1 + colors[ 5] * dx );
+    colors[2]= ( colors[ 2] * dx1 + colors[ 6] * dx );
 	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
-		mixed_colors[3]= ( colors[ 3] * dx1 + colors[ 7] * dx );
-    mixed_colors[4]= ( colors[ 8] * dx1 + colors[12] * dx );
-    mixed_colors[5]= ( colors[ 9] * dx1 + colors[13] * dx );
-    mixed_colors[6]= ( colors[10] * dx1 + colors[14] * dx );
+		colors[3]= ( colors[ 3] * dx1 + colors[ 7] * dx );
+    colors[4]= ( colors[ 8] * dx1 + colors[12] * dx );
+    colors[5]= ( colors[ 9] * dx1 + colors[13] * dx );
+    colors[6]= ( colors[10] * dx1 + colors[14] * dx );
 	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
-		mixed_colors[7]= ( colors[11] * dx1 + colors[15] * dx );
+		colors[7]= ( colors[11] * dx1 + colors[15] * dx );
 
-    out_color[0]= ( mixed_colors[0] * dy1 + mixed_colors[4] * dy ) >> 16;
-    out_color[1]= ( mixed_colors[1] * dy1 + mixed_colors[5] * dy ) >> 16;
-    out_color[2]= ( mixed_colors[2] * dy1 + mixed_colors[6] * dy ) >> 16;
+    out_color[0]= ( colors[0] * dy1 + colors[4] * dy ) >> 16;
+    out_color[1]= ( colors[1] * dy1 + colors[5] * dy ) >> 16;
+    out_color[2]= ( colors[2] * dy1 + colors[6] * dy ) >> 16;
 	if( blending_mode == BLENDING_SRC_ALPHA || alpha_test_mode != ALPHA_TEST_NONE )
-		out_color[3]= ( mixed_colors[3] * dy1 + mixed_colors[7] * dy ) >> 16;
+		out_color[3]= ( colors[3] * dy1 + colors[7] * dy ) >> 16;
 }
 
 
@@ -559,16 +556,17 @@ inline unsigned char LightmapFetchLinear( fixed16_t u, fixed16_t v )
     dx1= 256 - dx;
     dy1= 256 - dy;
 
+	y*= current_lightmap_size_x;
+	y1*= current_lightmap_size_x;
     int lights[4];
-    int mixed_lights[2];
-	lights[0]= current_lightmap_data[ x + y * current_lightmap_size_x ];
-	lights[1]= current_lightmap_data[ x1+ y * current_lightmap_size_x ];
-	lights[2]= current_lightmap_data[ x + y1* current_lightmap_size_x ];
-	lights[3]= current_lightmap_data[ x1+ y1* current_lightmap_size_x ];
-    mixed_lights[0]= ( lights[0] * dx1 + lights[1] * dx );
-    mixed_lights[1]= ( lights[2] * dx1 + lights[3] * dx );
+	lights[0]= current_lightmap_data[ x + y  ];
+	lights[1]= current_lightmap_data[ x1+ y  ];
+	lights[2]= current_lightmap_data[ x + y1 ];
+	lights[3]= current_lightmap_data[ x1+ y1 ];
+    lights[0]= ( lights[0] * dx1 + lights[1] * dx );
+    lights[1]= ( lights[2] * dx1 + lights[3] * dx );
 
-    return ( mixed_lights[0] * dy1 + mixed_lights[1] * dy ) >> 16;
+    return ( lights[0] * dy1 + lights[1] * dy ) >> 16;
 }
 
 inline void LightmapFetchColoredNearest( int u, int v, unsigned char* out_lightmap )
@@ -599,22 +597,24 @@ inline void LightmapFetchLinearRGBS( fixed16_t u, fixed16_t v, unsigned char* ou
     int s;
     int s_color[4];
     int mixed_s_color[2];
+	y*= current_lightmap_size_x;
+	y1*= current_lightmap_size_x;
 
-    s= ( x +  y * current_lightmap_size_x )<<2;
+    s= ( x + y )<<2;
 	Byte4Copy( out_lightmap, current_lightmap_data + s );//fetch rgb values
 
     s_color[0]= current_lightmap_data[s+3];
-    s= ( ( x1 +  y * current_lightmap_size_x )<<2 ) + 3;
+    s= ( ( x1 +  y )<<2 ) + 3;
     s_color[1]= current_lightmap_data[s];
-    s= ( ( x +  y1 * current_lightmap_size_x )<<2 ) + 3;
+    s= ( ( x +  y1 )<<2 ) + 3;
     s_color[2]= current_lightmap_data[s];
-    s= ( ( x1 + y1 * current_lightmap_size_x )<<2 ) + 3;
+    s= ( ( x1 + y1 )<<2 ) + 3;
     s_color[3]= current_lightmap_data[s];
 
-    mixed_s_color[0]= s_color[0] * dx1 + s_color[1] * dx;
-    mixed_s_color[1]= s_color[2] * dx1 + s_color[3] * dx;
+    s_color[0]= s_color[0] * dx1 + s_color[1] * dx;
+    s_color[1]= s_color[2] * dx1 + s_color[3] * dx;
 
-	s= mixed_s_color[0] * dy1 + mixed_s_color[1] * dy;
+	s= s_color[0] * dy1 + s_color[1] * dy;
 	out_lightmap[0]= ( out_lightmap[0] * s )>> 24;
     out_lightmap[1]= ( out_lightmap[1] * s )>> 24;
     out_lightmap[2]= ( out_lightmap[2] * s )>> 24;
@@ -635,39 +635,37 @@ void LightmapFetchColoredLinear( fixed16_t u, fixed16_t v, unsigned char* out_li
 
 	int s;
     int colors[12];
-    int mixed_colors[6];
 
-    s= x + y * current_lightmap_size_x;
-    s<<= 2;
+	y*= current_lightmap_size_x;
+	y1*= current_lightmap_size_x;
+
+    s= (x + y)<<2;
     colors[ 0]= current_lightmap_data[s+0];
     colors[ 1]= current_lightmap_data[s+1];
     colors[ 2]= current_lightmap_data[s+2];
-    s= x1 + y * current_lightmap_size_x;
-    s<<= 2;
+    s= (x1 + y)<<2;
     colors[ 3]= current_lightmap_data[s+0];
     colors[ 4]= current_lightmap_data[s+1];
     colors[ 5]= current_lightmap_data[s+2];
-    s= x +  y1 * current_lightmap_size_x;
-    s<<= 2;
+    s= (x + y1)<<2;
     colors[ 6]= current_lightmap_data[s+0];
     colors[ 7]= current_lightmap_data[s+1];
     colors[ 8]= current_lightmap_data[s+2];
-    s= x1 + y1 * current_lightmap_size_x;
-    s<<= 2;
+    s= (x1 + y1)<<2;
     colors[ 9]= current_lightmap_data[s+0];
     colors[10]= current_lightmap_data[s+1];
     colors[11]= current_lightmap_data[s+2];
 
-    mixed_colors[0]= ( colors[ 0] * dx1 + colors[ 3] * dx );
-    mixed_colors[1]= ( colors[ 1] * dx1 + colors[ 4] * dx );
-    mixed_colors[2]= ( colors[ 2] * dx1 + colors[ 5] * dx );
+    colors[0]= ( colors[ 0] * dx1 + colors[ 3] * dx );
+    colors[1]= ( colors[ 1] * dx1 + colors[ 4] * dx );
+    colors[2]= ( colors[ 2] * dx1 + colors[ 5] * dx );
 
-    mixed_colors[3]= ( colors[ 6] * dx1 + colors[ 9] * dx );
-    mixed_colors[4]= ( colors[ 7] * dx1 + colors[10] * dx );
-    mixed_colors[5]= ( colors[ 8] * dx1 + colors[11] * dx );
-    out_lightmap[0]= ( mixed_colors[0] * dy1 + mixed_colors[3] * dy ) >> 16;
-    out_lightmap[1]= ( mixed_colors[1] * dy1 + mixed_colors[4] * dy ) >> 16;
-    out_lightmap[2]= ( mixed_colors[2] * dy1 + mixed_colors[5] * dy ) >> 16;
+    colors[3]= ( colors[ 6] * dx1 + colors[ 9] * dx );
+    colors[4]= ( colors[ 7] * dx1 + colors[10] * dx );
+    colors[5]= ( colors[ 8] * dx1 + colors[11] * dx );
+    out_lightmap[0]= ( colors[0] * dy1 + colors[3] * dy ) >> 16;
+    out_lightmap[1]= ( colors[1] * dy1 + colors[4] * dy ) >> 16;
+    out_lightmap[2]= ( colors[2] * dy1 + colors[5] * dy ) >> 16;
 }
 
 

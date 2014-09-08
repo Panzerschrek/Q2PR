@@ -58,8 +58,9 @@ void SWimp_SaveOldHWGamma()
 	HDC desktop_hdc = GetDC( GetDesktopWindow() );
 	if( GetDeviceGammaRamp( desktop_hdc, old_gamma ) == FALSE )
 		sw_state.hw_gamma_supported= 0;
+	else
+		sw_state.hw_gamma_supported= 1;
 	ReleaseDC( GetDesktopWindow(), desktop_hdc );
-	sw_state.hw_gamma_supported= 1;
 }
 
 void SWimp_SetHWGamma()
@@ -540,4 +541,22 @@ void Sys_ExitThread()
 void Sys_DestroyThread(qthread_t thread)
 {
 	TerminateThread(thread.thread_handle,0);
+}
+
+
+void Sys_CreateSemaphore( qsemaphore_t* sem, const char* name )
+{
+	sem->sem_handle= CreateSemaphore( NULL, 1, 1, name );
+}
+void Sys_SemaphoreWait( qsemaphore_t* sem )
+{
+	WaitForSingleObject( sem->sem_handle, INFINITE );
+}
+void Sys_SemaphoreRelease( qsemaphore_t* sem )
+{
+	int result= ReleaseSemaphore( sem->sem_handle, 1, NULL );
+	if( result == 0 )
+	{
+		//error here
+	}
 }

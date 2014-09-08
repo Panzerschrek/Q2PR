@@ -871,6 +871,11 @@ typedef struct qmutex_s
 	RTL_CRITICAL_SECTION mutex_handle;
 }qmutex_t;
 
+typedef struct qsemaphore_s
+{
+	HANDLE sem_handle;
+}qsemaphore_t;
+
 typedef struct qthread_s
 {
 	void* thread_handle;
@@ -913,6 +918,11 @@ void Sys_CreateMutex( qmutex_t* m );
 void Sys_DestroyMutex( qmutex_t* mutex );
 void Sys_MutexLock( qmutex_t* mutex );
 void Sys_MutexUnlock( qmutex_t* mutex );
+
+void Sys_CreateSemaphore( qsemaphore_t* sem, const char* name );
+void Sys_SemaphoreWait( qsemaphore_t* sem );
+void Sys_SemaphoreRelease( qsemaphore_t* sem );
+
 
 qthread_t Sys_CreateThread( unsigned int (__stdcall*func)(void*), void* params );
 void Sys_ExitThread();
