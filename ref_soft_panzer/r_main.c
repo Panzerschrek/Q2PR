@@ -367,41 +367,41 @@ void R_Flashlight_f(void)
 
 void PANZER_Register (void)
 {
-	sw_aliasstats = ri.Cvar_Get ("sw_polymodelstats", "0", 0);
-	sw_allow_modex = ri.Cvar_Get( "sw_allow_modex", "1", CVAR_ARCHIVE );
-	sw_clearcolor = ri.Cvar_Get ("sw_clearcolor", "2", 0);
-	sw_drawflat = ri.Cvar_Get ("sw_drawflat", "0", 0);
-	sw_draworder = ri.Cvar_Get ("sw_draworder", "0", 0);
-	sw_maxedges = ri.Cvar_Get ("sw_maxedges", STRINGER(MAXSTACKSURFACES), 0);
-	sw_maxsurfs = ri.Cvar_Get ("sw_maxsurfs", "0", 0);
+	//sw_aliasstats = ri.Cvar_Get ("sw_polymodelstats", "0", 0);
+	//sw_allow_modex = ri.Cvar_Get( "sw_allow_modex", "1", CVAR_ARCHIVE );
+	//sw_clearcolor = ri.Cvar_Get ("sw_clearcolor", "2", 0);
+	//sw_drawflat = ri.Cvar_Get ("sw_drawflat", "0", 0);
+	//sw_draworder = ri.Cvar_Get ("sw_draworder", "0", 0);
+	//sw_maxedges = ri.Cvar_Get ("sw_maxedges", STRINGER(MAXSTACKSURFACES), 0);
+	//sw_maxsurfs = ri.Cvar_Get ("sw_maxsurfs", "0", 0);
 	//sw_mipcap = ri.Cvar_Get ("sw_mipcap", "0", 0);
 	//sw_mipscale = ri.Cvar_Get ("sw_mipscale", "1", 0);
-	sw_reportedgeout = ri.Cvar_Get ("sw_reportedgeout", "0", 0);
-	sw_reportsurfout = ri.Cvar_Get ("sw_reportsurfout", "0", 0);
-	sw_stipplealpha = ri.Cvar_Get( "sw_stipplealpha", "0", CVAR_ARCHIVE );
-	sw_surfcacheoverride = ri.Cvar_Get ("sw_surfcacheoverride", "0", 0);
-	sw_waterwarp = ri.Cvar_Get ("sw_waterwarp", "1", 0);
+	//sw_reportedgeout = ri.Cvar_Get ("sw_reportedgeout", "0", 0);
+	//sw_reportsurfout = ri.Cvar_Get ("sw_reportsurfout", "0", 0);
+	//sw_stipplealpha = ri.Cvar_Get( "sw_stipplealpha", "0", CVAR_ARCHIVE );
+	//sw_surfcacheoverride = ri.Cvar_Get ("sw_surfcacheoverride", "0", 0);
+	//sw_waterwarp = ri.Cvar_Get ("sw_waterwarp", "1", 0);
 	sw_mode = ri.Cvar_Get( "sw_mode", "0", CVAR_ARCHIVE );
 
 	r_lefthand = ri.Cvar_Get( "hand", "0", CVAR_USERINFO | CVAR_ARCHIVE );
-	r_speeds = ri.Cvar_Get ("r_speeds", "0", 0);
-	r_fullbright = ri.Cvar_Get ("r_fullbright", "0", 0);
-	r_drawentities = ri.Cvar_Get ("r_drawentities", "1", 0);
-	r_drawworld = ri.Cvar_Get ("r_drawworld", "1", 0);
-	r_dspeeds = ri.Cvar_Get ("r_dspeeds", "0", 0);
-	r_lightlevel = ri.Cvar_Get ("r_lightlevel", "0", 0);
-	r_lerpmodels = ri.Cvar_Get( "r_lerpmodels", "1", 0 );
+	//r_speeds = ri.Cvar_Get ("r_speeds", "0", 0);
+	//r_fullbright = ri.Cvar_Get ("r_fullbright", "0", 0);
+	//r_drawentities = ri.Cvar_Get ("r_drawentities", "1", 0);
+	//r_drawworld = ri.Cvar_Get ("r_drawworld", "1", 0);
+	//r_dspeeds = ri.Cvar_Get ("r_dspeeds", "0", 0);
+	//r_lightlevel = ri.Cvar_Get ("r_lightlevel", "0", 0);
+	//r_lerpmodels = ri.Cvar_Get( "r_lerpmodels", "1", 0 );
 	r_novis = ri.Cvar_Get( "r_novis", "0", 0 );
 
 	vid_fullscreen = ri.Cvar_Get( "vid_fullscreen", "0", CVAR_ARCHIVE );
 	vid_gamma = ri.Cvar_Get( "vid_gamma", "1.0", CVAR_ARCHIVE );
 
 	r_lightmap_mode = ri.Cvar_Get( "r_lightmap_mode", "lightmap_linear_colored", CVAR_ARCHIVE ); r_lightmap_mode->modified= false;
-	r_lightmap_saturation= ri.Cvar_Get( "r_lightmap_saturation", "1.0", CVAR_ARCHIVE ); r_lightmap_saturation->modified= false;
-	r_dlights_saturation= ri.Cvar_Get( "r_dlights_saturation", "1.0", CVAR_ARCHIVE ); r_dlights_saturation->modified= false;
+	r_lightmap_saturation= ri.Cvar_Get( "r_lightmap_saturation", "0.7", CVAR_ARCHIVE ); r_lightmap_saturation->modified= false;
+	r_dlights_saturation= ri.Cvar_Get( "r_dlights_saturation", "0.9", CVAR_ARCHIVE ); r_dlights_saturation->modified= false;
 	r_texture_mode= ri.Cvar_Get( "r_texture_mode", "texture_nearest", CVAR_ARCHIVE ); r_texture_mode->modified= false;
 	r_use_multithreading= ri.Cvar_Get( "r_use_multithreading", "0", CVAR_ARCHIVE ); r_use_multithreading->modified= false;
-	r_palettized_textures= ri.Cvar_Get( "r_palettized_textures", "1", CVAR_ARCHIVE ); r_palettized_textures->modified= false;
+	r_palettized_textures= ri.Cvar_Get( "r_palettized_textures", "0", CVAR_ARCHIVE ); r_palettized_textures->modified= false;
 	r_interpolate_videos= ri.Cvar_Get( "r_interpolate_videos", "1", CVAR_ARCHIVE );
 	r_clear_color_buffer= ri.Cvar_Get( "r_clear_color_buffer", "0", CVAR_ARCHIVE );
 	r_surface_caching= ri.Cvar_Get( "r_surface_caching", "1", CVAR_ARCHIVE );

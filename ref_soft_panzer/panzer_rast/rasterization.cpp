@@ -1200,9 +1200,9 @@ void ScanLines()
 		}
 #endif
 #ifdef PSR_SSE_Z_CALCULATION
-		//set z calculating flgas to false
-		for( int tx= x_begin>>2, tx_end= (x_end>>2)+1; tx<= tx_end; tx++ )
-			tetrapixel_z_calculated[tx]= 0;
+		//set z calculating flags to false
+		for( int tx= x_begin>>4, tx_end= (x_end>>4)+1; tx<= tx_end; tx++ )
+			((int*)tetrapixel_z_calculated)[tx]= 0;
 		PSR_ALIGN_16 fixed16_t tetrapixel_z[4];
 		__asm movups xmm0, xmmword ptr[ inv_delta_multipler_vec ]
 #endif
@@ -1254,10 +1254,11 @@ void ScanLines()
 #endif
 
 #ifdef PSR_SSE_Z_CALCULATION
+			int tetrapix_num= x&3;
 			if( tetrapixel_z_calculated[x>>2] == 0 )
 			{
 				PSR_ALIGN_16 fixed16_t inv_z_v_int[4];
-				int inv_z= line_inv_z - d_line_inv_z*(x&3);
+				int inv_z= line_inv_z - d_line_inv_z*tetrapix_num;
 				for( int i= 0; i< 4; i++, inv_z+= d_line_inv_z )
 					inv_z_v_int[i]= inv_z;
 				__asm
@@ -1278,7 +1279,7 @@ void ScanLines()
 				}
 				tetrapixel_z_calculated[x>>2]= 1;
 			}
-			final_z= tetrapixel_z[x&3];
+			final_z= tetrapixel_z[tetrapix_num];
 #else
 			final_z= Fixed16DepthInvert( line_inv_z );
 #endif//PSR_SSE_Z_CALCULATION
