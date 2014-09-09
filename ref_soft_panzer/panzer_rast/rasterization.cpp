@@ -1007,9 +1007,11 @@ void DrawSprite( int x0, int y0, int x1, int y1, fixed16_t sprite_in_depth )
                 }
 				else if( blending_mode == BLENDING_AVG )
                 {
-                    pixels[0]= ( pixels[0] + color[0] )>>1;
+                    /*pixels[0]= ( pixels[0] + color[0] )>>1;
                     pixels[1]= ( pixels[1] + color[1] )>>1;
-                    pixels[2]= ( pixels[2] + color[2] )>>1;
+                    pixels[2]= ( pixels[2] + color[2] )>>1;*/
+					//faster
+					*((int*)pixels)= ( ((*((unsigned int*)pixels))&0xFEFEFEFE) + ((*((unsigned int*)color))&0xFEFEFEFE) )>>1;
                 }
             }// if is blending
             else
@@ -1063,7 +1065,17 @@ static fixed16_t triangle_in_tex_coord[ 2 * 3 +2 ];
 static fixed16_t triangle_in_lightmap_tex_coord[ 2 * 3 +2 ];
 
 
-static fixed16_t scanline_z[ 1 + PSR_MAX_SCREEN_WIDTH / PSR_LINE_SEGMENT_SIZE ];
+//static fixed16_t scanline_z[ 1 + PSR_MAX_SCREEN_WIDTH / PSR_LINE_SEGMENT_SIZE ];
+static fixed16_t scanline_z[ 2 + PSR_MAX_SCREEN_WIDTH ];
+
+//vector for division for fast z calculation
+#define SSE_DIV_VAL (float(PSR_INV_DEPTH_DELTA_MULTIPLER)*4294967296.0f)
+static PSR_ALIGN_16 float inv_delta_multipler_vec[8]= {
+	SSE_DIV_VAL, SSE_DIV_VAL, SSE_DIV_VAL, SSE_DIV_VAL,
+	SSE_DIV_VAL, SSE_DIV_VAL, SSE_DIV_VAL, SSE_DIV_VAL };
+#undef SSE_DIV_VAL
+
+unsigned char tetrapixel_z_calculated[1+PSR_MAX_SCREEN_WIDTH/4];
 
 
 //variables for ScanLines function
@@ -1120,11 +1132,13 @@ void ScanLines()
 
 	for( int y= y_begin; y<= y_end; y++, x_left+= dx_left, x_right+= dx_right )//scan lines
     {
+		fixed16_t ddx;
 		int x_begin= FastIntClampToZero( (x_left>>16)+1 );
         int x_end= FastIntMin( screen_size_x-1, x_right>>16 );
+		if( x_end< x_begin )
+			goto next_line;
 
-
-        fixed16_t ddx= (x_begin<<16) - x_left;
+        ddx= (x_begin<<16) - x_left;
         if( color_mode == COLOR_PER_VERTEX )
         {
             for( int i= 0; i< 4; i++ )
@@ -1155,23 +1169,52 @@ void ScanLines()
         line_inv_z= inv_z_left + Fixed16Mul( ddx, d_line_inv_z );
 
 #ifdef PSR_FAST_PERSECTIVE
-        for( int x= x_begin>>PSR_LINE_SEGMENT_SIZE_LOG2, inv_z= line_inv_z - ( x_begin&(PSR_LINE_SEGMENT_SIZE-1) ) * d_line_inv_z;
-                x<= ( x_end>>PSR_LINE_SEGMENT_SIZE_LOG2 ) +2;
-                x++, inv_z+= ( PSR_LINE_SEGMENT_SIZE * d_line_inv_z )  )
-        {
-            scanline_z[x]= Fixed16Invert(FastIntMax( inv_z>>PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2, 65536/PSR_MIN_ZMIN ) );
-        }
-#endif
+		{
+			fixed16_t edge_z[2];
+			edge_z[0]= Fixed16DepthInvert( line_inv_z );
+			edge_z[1]= Fixed16DepthInvert( line_inv_z + d_line_inv_z * (x_end-x_begin) );
 
+			int sx= (x_begin>>PSR_LINE_SEGMENT_SIZE_LOG2)+1, sx_end= x_end>>PSR_LINE_SEGMENT_SIZE_LOG2;
+			if( sx_end < sx )
+			{
+				scanline_z[sx]= edge_z[1];
+				scanline_z[sx_end]= edge_z[0];
+				goto z_precalculation_end;
+			}
+			for( int x= sx, inv_z= line_inv_z + d_line_inv_z * ((x<<PSR_LINE_SEGMENT_SIZE_LOG2) - x_begin );
+				x<=sx_end; x++, inv_z+= (d_line_inv_z<<PSR_LINE_SEGMENT_SIZE_LOG2) )
+			{
+				scanline_z[x]= Fixed16DepthInvert( inv_z );
+			}
+			int dx1= PSR_LINE_SEGMENT_SIZE - (x_begin&(PSR_LINE_SEGMENT_SIZE-1));
+			//dx1 can`t be 0
+			scanline_z[sx-1]= 
+				( (edge_z[0]<<PSR_LINE_SEGMENT_SIZE_LOG2) - scanline_z[sx] * (x_begin&(PSR_LINE_SEGMENT_SIZE-1)) ) / dx1;
+			int dx= x_end&(PSR_LINE_SEGMENT_SIZE-1);
+			if( dx == 0 )
+				scanline_z[sx_end+1]= edge_z[1];
+			else
+				scanline_z[sx_end+1]= 
+					( (edge_z[1]<<PSR_LINE_SEGMENT_SIZE_LOG2) - scanline_z[sx_end] * (PSR_LINE_SEGMENT_SIZE-(x_end&(PSR_LINE_SEGMENT_SIZE-1))) ) /dx;
+			z_precalculation_end:;
+		}
+#endif
+#ifdef PSR_SSE_Z_CALCULATION
+		//set z calculating flgas to false
+		for( int tx= x_begin>>2, tx_end= (x_end>>2)+1; tx<= tx_end; tx++ )
+			tetrapixel_z_calculated[tx]= 0;
+		PSR_ALIGN_16 fixed16_t tetrapixel_z[4];
+		__asm movups xmm0, xmmword ptr[ inv_delta_multipler_vec ]
+#endif
 		int s= x_begin + y * screen_size_x;
 		unsigned char* pixels= screen_buffer + (s<<2);
 		depth_buffer_t* depth_p= depth_buffer + s;
+		//inner line variables
+		depth_buffer_t depth_z;
+		fixed16_t final_z;
+		PSR_ALIGN_8 unsigned char color[4];
 		for( int x= x_begin; x <= x_end; x++, pixels+=4, depth_p++ )
 		{
-			depth_buffer_t depth_z;
-			fixed16_t final_z;
-			PSR_ALIGN_8 unsigned char color[4];
-
 			if( blending_mode == BLENDING_FAKE )
 			{
 				if((x^y)&1) goto next_pixel;//discard half of pixels
@@ -1189,29 +1232,57 @@ void ScanLines()
 			{
 				if( depth_test_mode == DEPTH_TEST_LESS )
 					if( depth_z >= *depth_p )
-						 goto next_pixel;
+						goto next_pixel;
 				if( depth_test_mode == DEPTH_TEST_GREATER )
 					if( depth_z <= *depth_p )
-						 goto next_pixel;
+						goto next_pixel;
 				if( depth_test_mode == DEPTH_TEST_EQUAL )
 					if( depth_z != *depth_p )
-						 goto next_pixel;
+						goto next_pixel;
 				if( depth_test_mode == DEPTH_TEST_NOT_EQUAL )
 					if( depth_z == *depth_p )
-						 goto next_pixel;
+						goto next_pixel;
 
 			}//if depth test
 
-	#ifdef PSR_FAST_PERSECTIVE
+#ifdef PSR_FAST_PERSECTIVE
 			{
 				int i= x>>PSR_LINE_SEGMENT_SIZE_LOG2, d= x & ( PSR_LINE_SEGMENT_SIZE-1);
 				int d1= PSR_LINE_SEGMENT_SIZE - d;
 				final_z= ( scanline_z[i] * d1 + scanline_z[i+1] * d )>> PSR_LINE_SEGMENT_SIZE_LOG2;
 			}
-	#else
-			//final_z= Fixed16Invert( line_inv_z >> PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 );
+#endif
+
+#ifdef PSR_SSE_Z_CALCULATION
+			if( tetrapixel_z_calculated[x>>2] == 0 )
+			{
+				PSR_ALIGN_16 fixed16_t inv_z_v_int[4];
+				int inv_z= line_inv_z - d_line_inv_z*(x&3);
+				for( int i= 0; i< 4; i++, inv_z+= d_line_inv_z )
+					inv_z_v_int[i]= inv_z;
+				__asm
+				{
+					cvtpi2ps xmm2, qword ptr[ inv_z_v_int ]//covnert 2 ints to floats
+					cvtpi2ps xmm3, qword ptr[ inv_z_v_int+8 ]//covnert second 2 ints to floats
+					movlhps xmm2, xmm3
+
+					movaps  xmm1, xmm0//mov inv_delta_multipler_vec
+					divps xmm1, xmm2//make division! 4 per command !
+
+					cvttps2pi mm6, xmm1//convert 2 lower floats to ints
+					movhlps  xmm1, xmm1//write upper 2 floats to lower
+					cvttps2pi mm7, xmm1//convert too
+
+					movq qword ptr[ tetrapixel_z ], mm6
+					movq qword ptr[ tetrapixel_z + 8 ], mm7
+				}
+				tetrapixel_z_calculated[x>>2]= 1;
+			}
+			final_z= tetrapixel_z[x&3];
+#else
 			final_z= Fixed16DepthInvert( line_inv_z );
-	#endif
+#endif//PSR_SSE_Z_CALCULATION
+
 
 			if( color_mode == COLOR_CONSTANT )
 				Byte4Copy( color, constant_color );
@@ -1489,7 +1560,7 @@ void ScanLines()
 					pixels[1]= ( pixels[1] + color[1] )>>1;
 					pixels[2]= ( pixels[2] + color[2] )>>1;*/
 					//fasetr method, but can lost 1 in result
-					*((int*)pixels)= (((*((int*)pixels))>>1)&0x7f7f7f7f) + (((*((int*)color))>>1)&0x7f7f7f7f);
+					*((int*)pixels)= ( ((*((unsigned int*)pixels))&0xFEFEFEFE) + ((*((unsigned int*)color))&0xFEFEFEFE) )>>1;
 				}
 				else if( blending_mode == BLENDING_SRC_ALPHA )
 				{
@@ -1550,8 +1621,7 @@ void ScanLines()
 			line_inv_z+= d_line_inv_z;
 
 		}//for x
-
-
+next_line:
         if( color_mode == COLOR_PER_VERTEX )
         {
             color_left[0]+= d_color_left[0];
@@ -1586,12 +1656,98 @@ void ScanLines()
 	//shutdown mmx mode
 #ifdef PSR_MMX_RASTERIZATION
 	//make emms in all cases, when uses mmx
-	if( lighting_mode == LIGHTING_PER_VERTEX_COLORED || texture_mode == TEXTURE_LINEAR )
+	if( lighting_mode == LIGHTING_PER_VERTEX_COLORED || texture_mode == TEXTURE_LINEAR  )
+	{
+		__asm emms
+	}
+	const bool emms_cleared= true;
+#else
+	const bool emms_cleared= false;
+#endif
+
+#ifdef PSR_SSE_Z_CALCULATION
+	if( !emms_cleared )
 	{
 		__asm emms
 	}
 #endif
+
 }//ScanLines
+
+
+void ScanLines_CachedSurface()
+{
+	fixed16_t x_begin, x_end;
+	fixed16_t y;
+	__asm
+	{
+		mov eax, y_begin
+		mov y, eax
+line_begin:
+		cmp eax, y_end
+		jz scan_lines_end
+
+		//get x_begin
+		mov eax, x_left
+		shr eax, 16
+		test eax, 0xF0000000
+		mov ebx, 0
+		cmovl eax, ebx
+		mov x_begin, eax
+		//get x_end
+		mov ecx, x_right
+		shr ecx, 16
+		inc ecx
+		mov ebx, screen_size_x
+		cmp ecx, ebx
+		cmovge ecx, ebx
+		mov x_end, ecx
+
+		cmp ecx, eax
+		jl next_line_calculations
+
+		mov ecx, x_begin
+		/*
+		per pixel registers:
+		ecx - counter
+		*/
+next_pixel:
+
+
+next_pixel_calculations:
+		inc ecx
+		cmp ecx, x_end
+		jnz next_pixel
+
+
+
+		
+next_line_calculations:
+		//x_left+= delta, x_right+= delta
+		mov eax, x_left
+		add eax, dx_left
+		mov x_left, eax
+		mov ebx, x_right
+		add ebx, dx_right
+		mov x_right, ebx
+		//tc+= delta
+		mov ecx, dword ptr[ tc_left ]
+		add ecx, dword ptr[ d_tc_left ]
+		mov dword ptr[ tc_left ], ecx
+		mov edx, dword ptr[ tc_left+4 ]
+		add edx, dword ptr[ d_tc_left+4 ]
+		mov dword ptr[ tc_left+4 ], edx
+		//inv_z+= d_inv_z
+		mov eax, inv_z_left
+		add eax, d_inv_z_left
+		mov inv_z_left, eax
+
+		mov eax, y
+		inc eax
+		jmp line_begin
+scan_lines_end:
+	}
+}
 
 
 template<

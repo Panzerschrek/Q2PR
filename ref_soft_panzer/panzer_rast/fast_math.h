@@ -305,7 +305,7 @@ inline unsigned short FastUIntUShortDiv( unsigned int x, unsigned short y )
 #endif
 }
 
-inline char FastShortCharDiv( short x, char y )
+inline char FastShortByteDiv( short x, char y )
 {
 	#ifdef PSR_MASM32
 	__asm
@@ -318,7 +318,7 @@ inline char FastShortCharDiv( short x, char y )
 #endif
 }
 
-inline unsigned char FastUShortUCharDiv( unsigned short x, unsigned char y )
+inline unsigned char FastUShortUByteDiv( unsigned short x, unsigned char y )
 {
 	#ifdef PSR_MASM32
 	__asm
@@ -331,7 +331,7 @@ inline unsigned char FastUShortUCharDiv( unsigned short x, unsigned char y )
 #endif
 }
 
-inline char FastCharDiv( char x, char y )
+inline char FastByteDiv( char x, char y )
 {
 	#ifdef PSR_MASM32
 	__asm
@@ -345,7 +345,7 @@ inline char FastCharDiv( char x, char y )
 #endif
 }
 
-inline unsigned char FastUCharDiv( unsigned char x, unsigned char y )
+inline unsigned char FastUByteDiv( unsigned char x, unsigned char y )
 {
 	#ifdef PSR_MASM32
 	__asm

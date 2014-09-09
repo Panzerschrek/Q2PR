@@ -38,14 +38,11 @@ typedef unsigned short depth_buffer_t;
 
 
 #ifdef PSR_MASM32
-#define PSR_MMX_RASTERIZATION
+//#define PSR_MMX_RASTERIZATION
 #endif
 
 #define PSR_MAX_SCREEN_WIDTH 4096
 #define PSR_MAX_SCREEN_HEIGHT 4096
-
-#define PSR_LINE_SEGMENT_SIZE 8
-#define PSR_LINE_SEGMENT_SIZE_LOG2 3
 
 #define PSR_MAX_TEXTURE_SIZE 2048
 #define PSR_MAX_TEXTURE_SIZE_LOG2 11
@@ -61,6 +58,13 @@ typedef unsigned short depth_buffer_t;
 
 //if defined, z calculates every PSR_LINE_SEGMENT_SIZE pixel in scanline
 //#define PSR_FAST_PERSECTIVE
+#define PSR_LINE_SEGMENT_SIZE 8
+#define PSR_LINE_SEGMENT_SIZE_LOG2 3
+
+//if defined, z calculates by sse command per 4. incompatible with PSR_FAST_PERSECTIVE
+#ifdef PSR_MASM32
+#define PSR_SSE_Z_CALCULATION 1
+#endif
 
 #define PSR_MAX_DEPTH_BUFFER_VALUE 65536//max depth buffer value + 1
 

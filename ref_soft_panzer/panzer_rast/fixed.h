@@ -108,6 +108,7 @@ inline fixed16_t Fixed16Invert( fixed16_t b )
 
 //returns 1 / (b/PSR_INV_DEPTH_DELTA_MULTIPLER)
 //need for calcualtion of final pixel z
+//also, this function uses unsigned division ( becouse inv_z can`t be negative ) and this function faster
 inline fixed16_t Fixed16DepthInvert( fixed16_t b )
 {
 #ifdef PSR_MASM32
@@ -115,7 +116,7 @@ inline fixed16_t Fixed16DepthInvert( fixed16_t b )
 	{
 		xor eax, eax
 		mov edx, PSR_INV_DEPTH_DELTA_MULTIPLER
-		idiv b//result in eax
+		div b//result in eax
 	}
 #else
 	long long int y(PSR_INV_DEPTH_DELTA_MULTIPLER*4294967296LL);
