@@ -964,7 +964,7 @@ extern "C" void PANZER_RenderFrame(refdef_t *fd)
 	//clear color buffer ( if need )
 	if( r_clear_color_buffer->value /*|| (fd->rdflags&RDF_NOWORLDMODEL) != 0*/ )
 	{
-		static const unsigned char clear_color[]= { 0, 0, 0, 0 };
+		static const unsigned char clear_color[]= { 255, 0, 255, 0 };
 		command_buffer.current_pos+= ComIn_ClearColorBuffer(
 			(char*)command_buffer.buffer + command_buffer.current_pos, clear_color );
 	}

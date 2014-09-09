@@ -6,6 +6,7 @@ extern void* framebuffer_data;
 extern unsigned char* screen_buffer;
 extern unsigned char* back_screen_buffer;
 extern depth_buffer_t* depth_buffer;
+extern depth_buffer_t* hierarhical_depth_buffer;
 extern int screen_size_x;
 extern int screen_size_y;
 
@@ -347,8 +348,6 @@ next64bytes:
 			d[7]= clear_value;
 		}
 #endif
-
-
 }
 
 /*extern "C" void PRast_AlphaBlendColorBufferAndSwapRedBlueAlphaLost( const unsigned char* color )

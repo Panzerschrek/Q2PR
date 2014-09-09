@@ -147,7 +147,7 @@ int IsSurfaceCachable( msurface_t* surf )
 }
 
 //inner LightmapFetch variables. Not changing in surface scanlines, and becouse maked globals
-unsigned char* current_lightmap_data;
+unsigned char* current_lightmap_data= NULL;
 int current_lightmap_size_x;
 int lightmap_dy, lightmap_dy1;// y * lightmap_width * lightmap_texel_size
 int lightmap_y, lightmap_y1;
@@ -195,22 +195,22 @@ inline void LightmapColoredFetch( fixed16_t u, unsigned short* out_lightmap )
 	   */
 		mov esi, current_lightmap_data
 		add esi, lightmap_y
-		mov ebx, x
-		movd mm2, dword ptr[ esi + ebx*4]
+		mov eax, x
+		movd mm2, dword ptr[ esi + eax*4]
 		punpcklbw mm2, mm0
 
-		mov ebx, x1
-		movd mm3, dword ptr[ esi + ebx*4]
+		mov eax, x1
+		movd mm3, dword ptr[ esi + eax*4]
 		punpcklbw mm3, mm0
 
 		mov esi, current_lightmap_data
 		add esi, lightmap_y1
-		mov ebx, x
-		movd mm4, dword ptr[ esi + ebx*4]
+		mov eax, x
+		movd mm4, dword ptr[ esi + eax*4]
 		punpcklbw mm4, mm0
 
-		mov ebx, x1
-		movd mm5, dword ptr[ esi + ebx*4]
+		mov eax, x1
+		movd mm5, dword ptr[ esi + eax*4]
 		punpcklbw mm5, mm0
 
 		movq mm6, qword ptr[dx1_v]

@@ -12,6 +12,7 @@ void* framebuffer_data= NULL;//raw pointer to allocated framebuffer data.
 unsigned char* screen_buffer= NULL;//main screen color buffer format - RGBA
 unsigned char* back_screen_buffer= NULL;
 depth_buffer_t* depth_buffer= NULL;
+
 int screen_size_x, screen_size_y;
 
 namespace Draw
@@ -377,22 +378,22 @@ void TexelFetchLinear( fixed16_t u, fixed16_t v, unsigned char* out_color )
 	   */
 		mov esi, current_texture_data
 		add esi, y
-		mov ebx, x
-		movd mm1, dword ptr[ esi + ebx*4]
+		mov eax, x
+		movd mm1, dword ptr[ esi + eax*4]
 		punpcklbw mm1, mm0
 
-		mov ebx, x1
-		movd mm2, dword ptr[ esi + ebx*4]
+		mov eax, x1
+		movd mm2, dword ptr[ esi + eax*4]
 		punpcklbw mm2, mm0
 
 		mov esi, current_texture_data
 		add esi, y1
-		mov ebx, x
-		movd mm6, dword ptr[ esi + ebx*4]
+		mov eax, x
+		movd mm6, dword ptr[ esi + eax*4]
 		punpcklbw mm6, mm0
 
-		mov ebx, x1
-		movd mm7, dword ptr[ esi + ebx*4]
+		mov eax, x1
+		movd mm7, dword ptr[ esi + eax*4]
 		punpcklbw mm7, mm0
 
 		pmullw mm1, qword ptr[dx1_v]
@@ -596,7 +597,6 @@ inline void LightmapFetchLinearRGBS( fixed16_t u, fixed16_t v, unsigned char* ou
 
     int s;
     int s_color[4];
-    int mixed_s_color[2];
 	y*= current_lightmap_size_x;
 	y1*= current_lightmap_size_x;
 
@@ -1070,61 +1070,17 @@ static fixed16_t scanline_z[ 1 + PSR_MAX_SCREEN_WIDTH / PSR_LINE_SEGMENT_SIZE ];
 int y_begin;
 int y_end;
 fixed16_t x_left, x_right, dx_left, dx_right;
-fixed16_t color_left[4], d_color_left[4];
 fixed16_t inv_z_left, d_inv_z_left;
 fixed16_t tc_left[4], d_tc_left[4];// texture coord and lightmap coord
+fixed16_t color_left[4], d_color_left[4];
 fixed16_t lod_left, d_lod_left;
 fixed16_t light_left, d_light_left;
 
-fixed16_t line_color[4], d_line_color[4];
 fixed16_t line_tc[4], d_line_tc[4];// texture coord and lightmap coord
+fixed16_t line_color[4], d_line_color[4];
 fixed16_t line_light, d_line_light;
 fixed16_t line_lod, d_line_lod;
 fixed16_t line_inv_z, d_line_inv_z;
-
-/*
-inline void ShadeColorByLightmap( unsigned char* color, unsigned char* lightmap )
-{
-	__asm
-	{
-		mov esi, color
-		mov edi, lightmap
-		mov ecx, 255
-
-		movzx eax, byte ptr[esi]
-		mov edx, eax
-		shl edx, 1
-		add eax, edx
-		movzx ebx, byte ptr[edi]
-		imul ebx
-		shr eax, 8
-		cmp eax, ecx
-		cmovg eax, ecx
-		mov byte ptr[esi], al
-
-		movzx eax, byte ptr[esi+1]
-		mov edx, eax
-		shl edx, 1
-		add eax, edx
-		movzx ebx, byte ptr[edi+1]
-		imul ebx
-		shr eax, 8
-		cmp eax, ecx
-		cmovg eax, ecx
-		mov byte ptr[esi+1], al
-
-		movzx eax, byte ptr[esi+2]
-		mov edx, eax
-		shl edx, 1
-		add eax, edx
-		movzx ebx, byte ptr[edi+2]
-		imul ebx
-		shr eax, 8
-		cmp eax, ecx
-		cmovg eax, ecx
-		mov byte ptr[esi+2], al
-	}
-}*/
 
 
 template<
@@ -1167,9 +1123,6 @@ void ScanLines()
 		int x_begin= FastIntClampToZero( (x_left>>16)+1 );
         int x_end= FastIntMin( screen_size_x-1, x_right>>16 );
 
-        int s= x_begin + screen_size_x * y;
-        depth_buffer_t* depth_p= depth_buffer + s;
-        unsigned char* pixels= screen_buffer + (s<<2);
 
         fixed16_t ddx= (x_begin<<16) - x_left;
         if( color_mode == COLOR_PER_VERTEX )
@@ -1210,17 +1163,20 @@ void ScanLines()
         }
 #endif
 
-        for( int x= x_begin; x <= x_end; x++, pixels+=4, depth_p++ )
-        {
-		    if( blending_mode == BLENDING_FAKE )
-            {
-                int z= (x^y)&1;
-                if( z )
-                    goto next_pixel;//discard
-			}
-           
+		int s= x_begin + y * screen_size_x;
+		unsigned char* pixels= screen_buffer + (s<<2);
+		depth_buffer_t* depth_p= depth_buffer + s;
+		for( int x= x_begin; x <= x_end; x++, pixels+=4, depth_p++ )
+		{
 			depth_buffer_t depth_z;
 			fixed16_t final_z;
+			PSR_ALIGN_8 unsigned char color[4];
+
+			if( blending_mode == BLENDING_FAKE )
+			{
+				if((x^y)&1) goto next_pixel;//discard half of pixels
+			}
+	       
 			//scale z to convert to depth buffer format
 			if( additional_effect_mode == ADDITIONAL_EFFECT_DEPTH_HACK )
 			{
@@ -1246,28 +1202,27 @@ void ScanLines()
 
 			}//if depth test
 
-			 PSR_ALIGN_8 unsigned char color[4];
-#ifdef PSR_FAST_PERSECTIVE
-            {
-                int i= x>>PSR_LINE_SEGMENT_SIZE_LOG2, d= x & ( PSR_LINE_SEGMENT_SIZE-1);
-                int d1= PSR_LINE_SEGMENT_SIZE - d;
-                final_z= ( scanline_z[i] * d1 + scanline_z[i+1] * d )>> PSR_LINE_SEGMENT_SIZE_LOG2;
-            }
-#else
-            //final_z= Fixed16Invert( line_inv_z >> PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 );
+	#ifdef PSR_FAST_PERSECTIVE
+			{
+				int i= x>>PSR_LINE_SEGMENT_SIZE_LOG2, d= x & ( PSR_LINE_SEGMENT_SIZE-1);
+				int d1= PSR_LINE_SEGMENT_SIZE - d;
+				final_z= ( scanline_z[i] * d1 + scanline_z[i+1] * d )>> PSR_LINE_SEGMENT_SIZE_LOG2;
+			}
+	#else
+			//final_z= Fixed16Invert( line_inv_z >> PSR_INV_DEPTH_DELTA_MULTIPLER_LOG2 );
 			final_z= Fixed16DepthInvert( line_inv_z );
-#endif
+	#endif
 
-            if( color_mode == COLOR_CONSTANT )
+			if( color_mode == COLOR_CONSTANT )
 				Byte4Copy( color, constant_color );
-            else if( color_mode == COLOR_PER_VERTEX )
-            {
-                for( int i= 0; i< 4; i++ )
-                    color[i]= Fixed16MulResultToInt( line_color[i], final_z )>>PSR_COLOR_DELTA_MULTIPLER_LOG2;
-            }
+			else if( color_mode == COLOR_PER_VERTEX )
+			{
+				for( int i= 0; i< 4; i++ )
+					color[i]= Fixed16MulResultToInt( line_color[i], final_z )>>PSR_COLOR_DELTA_MULTIPLER_LOG2;
+			}
 			else if( color_mode == COLOR_FROM_TEXTURE )
-            {
-                if( texture_mode == TEXTURE_NEAREST )
+			{
+				if( texture_mode == TEXTURE_NEAREST )
 				{
 					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
 					{
@@ -1279,9 +1234,9 @@ void ScanLines()
 					}
 					else
 						TexelFetchNearest( Fixed16MulResultToInt( line_tc[0], final_z ),
-										Fixed16MulResultToInt( line_tc[1], final_z ), color );
+											Fixed16MulResultToInt( line_tc[1], final_z ), color );
 				}
-                else if( texture_mode == TEXTURE_LINEAR )
+				else if( texture_mode == TEXTURE_LINEAR )
 				{
 					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
 					{
@@ -1292,10 +1247,12 @@ void ScanLines()
 						TexelFetchLinear< blending_mode, alpha_test_mode >( v+dv, u+du, color );
 					}
 					else
-						TexelFetchLinear< blending_mode, alpha_test_mode >( Fixed16Mul( line_tc[0], final_z ), Fixed16Mul( line_tc[1] , final_z ), color );
+						TexelFetchLinear< blending_mode, alpha_test_mode >( 
+								Fixed16Mul( line_tc[0], final_z ),
+								Fixed16Mul( line_tc[1] , final_z ), color );
 				}
-                else if( texture_mode == TEXTURE_FAKE_FILTER )
-                {
+				else if( texture_mode == TEXTURE_FAKE_FILTER )
+				{
 					int ind= ((x&1)|((y&1)<<1))<<1;
 					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
 					{
@@ -1310,20 +1267,20 @@ void ScanLines()
 					else
 						TexelFetchNearest( ( Fixed16Mul( line_tc[0], final_z ) + dithering_shift_table[ind+1] )>> 16,
 										   ( Fixed16Mul( line_tc[1], final_z ) + dithering_shift_table[ind] )>> 16, color  );
-                }
-                /*else if( texture_mode == TEXTURE_NEAREST_MIPMAP )
-                {
-                    TexelFetchNearestMipmap( Fixed16MulResultToInt( line_tc[0], final_z ),
-                                             Fixed16MulResultToInt( line_tc[1], final_z ), Fixed16MulResultToInt( line_lod, final_z ), color );
-                }
-                else if( texture_mode == TEXTURE_FAKE_FILTER_MIPMAP )
-                {
-                    int xx= ((y^x)&1)<<15;
-                    int yy= xx;
-                    TexelFetchNearestMipmap( ( Fixed16Mul( line_tc[0], final_z ) + yy )>> 16,
-                                             ( Fixed16Mul( line_tc[1], final_z ) + xx )>> 16,
-                                             Fixed16MulResultToInt( line_lod, final_z ), color );
-                }*/
+				}
+				/*else if( texture_mode == TEXTURE_NEAREST_MIPMAP )
+				{
+					TexelFetchNearestMipmap( Fixed16MulResultToInt( line_tc[0], final_z ),
+											 Fixed16MulResultToInt( line_tc[1], final_z ), Fixed16MulResultToInt( line_lod, final_z ), color );
+				}
+				else if( texture_mode == TEXTURE_FAKE_FILTER_MIPMAP )
+				{
+					int xx= ((y^x)&1)<<15;
+					int yy= xx;
+					TexelFetchNearestMipmap( ( Fixed16Mul( line_tc[0], final_z ) + yy )>> 16,
+											 ( Fixed16Mul( line_tc[1], final_z ) + xx )>> 16,
+											 Fixed16MulResultToInt( line_lod, final_z ), color );
+				}*/
 				else if( texture_mode == TEXTURE_PALETTIZED_NEAREST )
 				{
 					if( additional_effect_mode == ADDITIONAL_EFFECT_TURBULENCE )
@@ -1372,68 +1329,68 @@ void ScanLines()
 				}
 				/*else if( texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP )
 					TexelFetchNearestMipmapPlaettized( Fixed16MulResultToInt( line_tc[0], final_z ),
-                                             Fixed16MulResultToInt( line_tc[1], final_z ),
+											 Fixed16MulResultToInt( line_tc[1], final_z ),
 											 Fixed16MulResultToInt( line_lod, final_z ), color );
 				else if( texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER_MIPMAP )
 				{
 					int xx= ((y^x)&1)<<15;
 					TexelFetchNearestMipmapPlaettized( ( Fixed16Mul( line_tc[0], final_z ) + xx )>> 16,
-                                             ( Fixed16Mul( line_tc[1], final_z ) + xx )>> 16,
-                                             Fixed16MulResultToInt( line_lod, final_z ), color );
+											 ( Fixed16Mul( line_tc[1], final_z ) + xx )>> 16,
+											 Fixed16MulResultToInt( line_lod, final_z ), color );
 				}*/
-            }//color from texture
+			}//color from texture
 
-            if( alpha_test_mode != ALPHA_TEST_NONE )
-            {
-                if( alpha_test_mode == ALPHA_TEST_LESS )
-                    if( color[3] > constant_alpha )
-                        goto next_pixel;
-                if( alpha_test_mode == ALPHA_TEST_GREATER )
-                    if( color[3] < constant_alpha )
-                        goto next_pixel;
-                if( alpha_test_mode == ALPHA_TEST_EQUAL )
-                    if( color[3] != constant_alpha )
-                        goto next_pixel;
-                if( alpha_test_mode == ALPHA_TEST_NOT_EQUAL )
-                    if( color[3] == constant_alpha )
-                        goto next_pixel;
+			if( alpha_test_mode != ALPHA_TEST_NONE )
+			{
+				if( alpha_test_mode == ALPHA_TEST_LESS )
+					if( color[3] > constant_alpha )
+						goto next_pixel;
+				if( alpha_test_mode == ALPHA_TEST_GREATER )
+					if( color[3] < constant_alpha )
+						goto next_pixel;
+				if( alpha_test_mode == ALPHA_TEST_EQUAL )
+					if( color[3] != constant_alpha )
+						goto next_pixel;
+				if( alpha_test_mode == ALPHA_TEST_NOT_EQUAL )
+					if( color[3] == constant_alpha )
+						goto next_pixel;
 				if( alpha_test_mode == ALPHA_TEST_DISCARD_LESS_HALF )
 					if( color[3] < 128 )
 						goto next_pixel;
 				if( alpha_test_mode == ALPHA_TEST_DISCARD_GREATER_HALF )
 					if( color[3] >= 128 )
 						goto next_pixel;
-            }// if alpha test
+			}// if alpha test
 
-            //lighting
-            if( lighting_mode == LIGHTING_CONSTANT )
-            {
-                color[0]= FastIntUByteMulClamp255( constant_light, color[0] );
-                color[1]= FastIntUByteMulClamp255( constant_light, color[1] );
-                color[2]= FastIntUByteMulClamp255( constant_light, color[2] );
-            }
-            else if( lighting_mode == LIGHTING_PER_VERTEX )
-            {
-                int final_light= FastIntClampToZero( Fixed16MulResultToInt( line_light, final_z ) );
-                color[0]= FastIntUByteMulClamp255( final_light, color[0] );
-                color[1]= FastIntUByteMulClamp255( final_light, color[1] );
-                color[2]= FastIntUByteMulClamp255( final_light, color[2] );
-            }
+			//lighting
+			if( lighting_mode == LIGHTING_CONSTANT )
+			{
+				color[0]= FastIntUByteMulClamp255( constant_light, color[0] );
+				color[1]= FastIntUByteMulClamp255( constant_light, color[1] );
+				color[2]= FastIntUByteMulClamp255( constant_light, color[2] );
+			}
+			else if( lighting_mode == LIGHTING_PER_VERTEX )
+			{
+				int final_light= FastIntClampToZero( Fixed16MulResultToInt( line_light, final_z ) );
+				color[0]= FastIntUByteMulClamp255( final_light, color[0] );
+				color[1]= FastIntUByteMulClamp255( final_light, color[1] );
+				color[2]= FastIntUByteMulClamp255( final_light, color[2] );
+			}
 			else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
-            {
-#ifdef PSR_MMX_RASTERIZATION
+			{
+	#ifdef PSR_MMX_RASTERIZATION
 				PSR_ALIGN_8 unsigned short final_light[4];
 				__asm
 				{
-					mov ebx, final_z
+					mov ecx, final_z
 					mov eax, dword ptr[line_color]
-					imul ebx
+					imul ecx
 					mov  word ptr[final_light], dx
 					mov eax, dword ptr[line_color+4]
-					imul ebx
+					imul ecx
 					mov  word ptr[final_light+2], dx
 					mov eax, dword ptr[line_color+8]
-					imul ebx
+					imul ecx
 					mov  word ptr[final_light+4], dx
 
 					movd mm2, dword ptr[color]
@@ -1443,18 +1400,18 @@ void ScanLines()
 					packuswb mm2, mm0
 					movd dword ptr[color], mm2
 				}
-#else
+	#else
 				int final_light[3];
 				final_light[0]= Fixed16MulResultToInt( line_color[0], final_z );
 				final_light[1]= Fixed16MulResultToInt( line_color[1], final_z );
 				final_light[2]= Fixed16MulResultToInt( line_color[2], final_z );
-                color[0]= FastIntUByteMulClamp255( final_light[0], color[0] );
-                color[1]= FastIntUByteMulClamp255( final_light[1], color[1] );
-                color[2]= FastIntUByteMulClamp255( final_light[2], color[2] );
-#endif
-            }
-            else if( lighting_mode == LIGHTING_FROM_LIGHTMAP )
-            {
+				color[0]= FastIntUByteMulClamp255( final_light[0], color[0] );
+				color[1]= FastIntUByteMulClamp255( final_light[1], color[1] );
+				color[2]= FastIntUByteMulClamp255( final_light[2], color[2] );
+	#endif
+			}
+			else if( lighting_mode == LIGHTING_FROM_LIGHTMAP )
+			{
 				if( lightmap_mode == LIGHTMAP_NEAREST )
 				{
 					int light= LightmapFetchNearest(Fixed16MulResultToInt(line_tc[2], final_z), Fixed16MulResultToInt(line_tc[3], final_z))<<1;
@@ -1494,18 +1451,18 @@ void ScanLines()
 					c= (light[1] * 3 * color[1])>>8; if( c > 255 ) c= 255; color[1]= c;
 					c= (light[2] * 3 * color[2])>>8; if( c > 255 ) c= 255; color[2]= c;
 				}
-            }
-            else if( lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
-            {
-            }
+			}
+			else if( lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
+			{
+			}
 
-            //blending
-            if( blending_mode != BLENDING_NONE )
-            {
-                if( blending_mode == BLENDING_CONSTANT )
-                {
-#if 0//remove mmx blending
-//#ifdef PSR_MMX_RASTERIZATION
+			//blending
+			if( blending_mode != BLENDING_NONE )
+			{
+				if( blending_mode == BLENDING_CONSTANT )
+				{
+	#if 0//remove mmx blending
+	//#ifdef PSR_MMX_RASTERIZATION
 					__asm
 					{
 						movd mm1, color
@@ -1520,81 +1477,81 @@ void ScanLines()
 						packuswb mm1, mm0
 						movd dword ptr[edi], mm1
 					}
-#else
-                    pixels[0]= ( color[0] * constant_blend_factor + pixels[0] * inv_constant_blend_factor ) >> 8;
-                    pixels[1]= ( color[1] * constant_blend_factor + pixels[1] * inv_constant_blend_factor ) >> 8;
-                    pixels[2]= ( color[2] * constant_blend_factor + pixels[2] * inv_constant_blend_factor ) >> 8;
-#endif
-                }
-                else if( blending_mode == BLENDING_AVG )
-                {
-                    /*pixels[0]= ( pixels[0] + color[0] )>>1;
-                    pixels[1]= ( pixels[1] + color[1] )>>1;
-                    pixels[2]= ( pixels[2] + color[2] )>>1;*/
+	#else
+					pixels[0]= ( color[0] * constant_blend_factor + pixels[0] * inv_constant_blend_factor ) >> 8;
+					pixels[1]= ( color[1] * constant_blend_factor + pixels[1] * inv_constant_blend_factor ) >> 8;
+					pixels[2]= ( color[2] * constant_blend_factor + pixels[2] * inv_constant_blend_factor ) >> 8;
+	#endif
+				}
+				else if( blending_mode == BLENDING_AVG )
+				{
+					/*pixels[0]= ( pixels[0] + color[0] )>>1;
+					pixels[1]= ( pixels[1] + color[1] )>>1;
+					pixels[2]= ( pixels[2] + color[2] )>>1;*/
 					//fasetr method, but can lost 1 in result
 					*((int*)pixels)= (((*((int*)pixels))>>1)&0x7f7f7f7f) + (((*((int*)color))>>1)&0x7f7f7f7f);
-                }
-                else if( blending_mode == BLENDING_SRC_ALPHA )
-                {
-                    unsigned char inv_blend_factor= 255 - color[3];
-                    pixels[0]= ( color[0] * color[3] + pixels[0] * inv_blend_factor ) >> 8;
-                    pixels[1]= ( color[1] * color[3] + pixels[1] * inv_blend_factor ) >> 8;
-                    pixels[2]= ( color[2] * color[3] + pixels[2] * inv_blend_factor ) >> 8;
-                }
-                else if( blending_mode == BLENDING_FAKE )
+				}
+				else if( blending_mode == BLENDING_SRC_ALPHA )
+				{
+					unsigned char inv_blend_factor= 255 - color[3];
+					pixels[0]= ( color[0] * color[3] + pixels[0] * inv_blend_factor ) >> 8;
+					pixels[1]= ( color[1] * color[3] + pixels[1] * inv_blend_factor ) >> 8;
+					pixels[2]= ( color[2] * color[3] + pixels[2] * inv_blend_factor ) >> 8;
+				}
+				else if( blending_mode == BLENDING_FAKE )
 					Byte4Copy( pixels, color );
-                else if( blending_mode == BLENDING_ADD )
-                {
-                    pixels[0]= FastUByteAddClamp255( color[0], pixels[0] );
-                    pixels[1]= FastUByteAddClamp255( color[1], pixels[1] );
-                    pixels[2]= FastUByteAddClamp255( color[2], pixels[2] );
-                }
-                else if( blending_mode == BLENDING_MUL )
-                {
-                    pixels[0]= ( pixels[0] * color[0] )>>8;
-                    pixels[1]= ( pixels[1] * color[1] )>>8;
-                    pixels[2]= ( pixels[2] * color[2] )>>8;
-                }
-            }// if is blending
-            else
-                Byte4Copy( pixels, color );
+				else if( blending_mode == BLENDING_ADD )
+				{
+					pixels[0]= FastUByteAddClamp255( color[0], pixels[0] );
+					pixels[1]= FastUByteAddClamp255( color[1], pixels[1] );
+					pixels[2]= FastUByteAddClamp255( color[2], pixels[2] );
+				}
+				else if( blending_mode == BLENDING_MUL )
+				{
+					pixels[0]= ( pixels[0] * color[0] )>>8;
+					pixels[1]= ( pixels[1] * color[1] )>>8;
+					pixels[2]= ( pixels[2] * color[2] )>>8;
+				}
+			}// if is blending
+			else
+				Byte4Copy( pixels, color );
 
-            if( write_depth )
-                *depth_p= depth_z;
-next_pixel:
-            if( color_mode == COLOR_PER_VERTEX )
-            {
-                line_color[0]+= d_line_color[0];
-                line_color[1]+= d_line_color[1];
-                line_color[2]+= d_line_color[2];
-                line_color[3]+= d_line_color[3];
-            }
-            else if( color_mode == COLOR_FROM_TEXTURE )
-            {
-                line_tc[0]+= d_line_tc[0];
-                line_tc[1]+= d_line_tc[1];
-                if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP
+			if( write_depth )
+				*depth_p= depth_z;
+	next_pixel:
+			if( color_mode == COLOR_PER_VERTEX )
+			{
+				line_color[0]+= d_line_color[0];
+				line_color[1]+= d_line_color[1];
+				line_color[2]+= d_line_color[2];
+				line_color[3]+= d_line_color[3];
+			}
+			else if( color_mode == COLOR_FROM_TEXTURE )
+			{
+				line_tc[0]+= d_line_tc[0];
+				line_tc[1]+= d_line_tc[1];
+				if( texture_mode == TEXTURE_NEAREST_MIPMAP || texture_mode == TEXTURE_FAKE_FILTER_MIPMAP
 					|| texture_mode == TEXTURE_PALETTIZED_NEAREST_MIPMAP || texture_mode == TEXTURE_PALETTIZED_FAKE_FILTER_MIPMAP )
-                    line_lod+= d_line_lod;
-            }
-            if( lighting_mode == LIGHTING_PER_VERTEX )
-                line_light+= d_line_light;
+					line_lod+= d_line_lod;
+			}
+			if( lighting_mode == LIGHTING_PER_VERTEX )
+				line_light+= d_line_light;
 			else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
 			{
 				line_color[0]+= d_line_color[0];
-                line_color[1]+= d_line_color[1];
-                line_color[2]+= d_line_color[2];
+				line_color[1]+= d_line_color[1];
+				line_color[2]+= d_line_color[2];
 			}
-            else if( lighting_mode == LIGHTING_FROM_LIGHTMAP || lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
-            {
-                line_tc[2]+= d_line_tc[2];
-                line_tc[3]+= d_line_tc[3];
-            }
-            line_inv_z+= d_line_inv_z;
+			else if( lighting_mode == LIGHTING_FROM_LIGHTMAP || lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
+			{
+				line_tc[2]+= d_line_tc[2];
+				line_tc[3]+= d_line_tc[3];
+			}
+			line_inv_z+= d_line_inv_z;
 
-        }//for x
+		}//for x
 
-//next_line:
+
         if( color_mode == COLOR_PER_VERTEX )
         {
             color_left[0]+= d_color_left[0];

@@ -52,10 +52,10 @@ typedef unsigned short depth_buffer_t;
 
 #define PSR_MAX_NORMALIZED_LIGHT 127// color= ( normalized_light * 256 * color )/256
 
-#define PSR_MIN_ZMIN_FLOAT 0.125f
-#define PSR_MIN_ZMIN (65536/8)// minimal value of zmin in fixed16_t format
-#define PSR_INV_MIN_ZMIN_INT 8
-#define PSR_INV_MIN_ZMIN_INT_LOG2 3
+#define PSR_MIN_ZMIN_FLOAT 0.0625f
+#define PSR_MIN_ZMIN (65536/16)// minimal value of zmin in fixed16_t format
+#define PSR_INV_MIN_ZMIN_INT 16
+#define PSR_INV_MIN_ZMIN_INT_LOG2 4
 
 #define PSR_MAX_ZMAX (1024)// maximal value of zmax in INT format
 
@@ -68,6 +68,7 @@ typedef unsigned short depth_buffer_t;
 #define PSR_DEPTH_SCALER  128//( PSR_MAX_DEPTH_BUFFER_VALUE * PSR_MAX_ZMAX / 65536 )
 #define PSR_DEPTH_SCALER_LOG2 7
 #define PSR_DEPTH_HACK_SCALER 1
+
 
 //scale delta of line variables in fragment processing, becouse without it, deltas can be very small
 #define PSR_INV_DEPTH_DELTA_MULTIPLER 64

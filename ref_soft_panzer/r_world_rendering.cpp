@@ -463,7 +463,7 @@ void InitFrustrumClipPlanes( m_Mat4* normal_mat, vec3_t transformed_cam_pos )
 
 	vec3_t moved_cam_pos;
 	VectorCopy( transformed_cam_pos, moved_cam_pos );
-	float z_near= 1.0625f * PSR_MIN_ZMIN_FLOAT * float(Q2_UNITS_PER_METER);
+	float z_near= 1.4f * PSR_MIN_ZMIN_FLOAT * float(Q2_UNITS_PER_METER);
 	moved_cam_pos[0]+= clip_planes[0].normal[0] * z_near;
 	moved_cam_pos[1]+= clip_planes[0].normal[1] * z_near;
 	moved_cam_pos[2]+= clip_planes[0].normal[2] * z_near;
