@@ -325,19 +325,19 @@ void GenerateCacheBlock()
 	{
 		for( int i= 0; i< light_components; i++ )
 		{
-			d_line_light[i]= ( (light_right[i]- light_left[i])>>(4-mip) )>>6;
+			d_line_light[i]= (light_right[i]- light_left[i])>>(4-mip+6);
 			line_light[i]= light_left[i]>>6;
 		}
 
 		int tc_y= (b_tc[1]+y)&b_tex_size_y1;
-		const unsigned char* src= b_tex_data + tc_y * (texel_size<<b_tex_size_x_log2);
+		const unsigned char* src= b_tex_data + texel_size * (tc_y<<b_tex_size_x_log2);
 		unsigned char* dst= b_dst + (y<<b_cache_width_log2) * 4;
-		for( int x= 0; x< (1<<(4-mip)); x++, dst+= 4 )
+		for( int x= b_tc[0], x_e= b_tc[0] + (1<<(4-mip)); x< x_e; x++ , dst+= 4)
 		{
 			if( texture_is_palettized )
-				*((int*)color)= d_8to24table[ src[(x+b_tc[0])&b_tex_size_x1] ];
+				*((int*)color)= d_8to24table[ src[x&b_tex_size_x1] ];
 			else
-				*((int*)color)= ((int*)src)[ (x+b_tc[0])&b_tex_size_x1 ];
+				*((int*)color)= ((int*)src)[ x&b_tex_size_x1 ];
 			int c;
 			if( light_components == 1 )
 			{ 

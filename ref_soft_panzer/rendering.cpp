@@ -368,7 +368,7 @@ extern "C" void PR_SwapCommandBuffers()
 			(char*)command_buffer.buffer + command_buffer.current_pos, sw_state.gammatable );
 	}
 	//mirror framebuffer vertical
-	if( vid_fullscreen->value )
+	if( vid_fullscreen->value && r_use_ddraw->value )
 	{
 		command_buffer.current_pos+= ComIn_MirrorVerticalColorBuffer(
 			(char*)command_buffer.buffer + command_buffer.current_pos );

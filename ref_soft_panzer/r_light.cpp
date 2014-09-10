@@ -640,42 +640,35 @@ void R_LightPoint (vec3_t p, vec3_t color)
 		return;
 	}
 
-	end[0] = p[0];
-	end[1] = p[1];
-	end[2] = p[2] - 2048;
 
-	r = RecursiveLightPoint (r_worldmodel->nodes, p, end);
+	static const float delta_vecs[]= {
+		0.0f, 0.0f, 
+		512.0f, 0.0f,
+		-512.0f, 0.0f,
+		0.0f, 512.0f,
+		0.0f, -512.0f };
 
-	if (r == -1)
+	float accamulated_color[]= { 0.0f, 0.0f, 0.0f };
+	for( int i= 0; i< sizeof(delta_vecs)/sizeof(float)/2; i++ )
 	{
-		//VectorCopy (vec3_origin, color);
-		color[0]= color[1]= color[2]= 0.5f;//PANZER - middle lighting
-	}
-	else
-	{
-		VectorCopy (pointcolor, color);
-	}
+		end[0] = p[0] + delta_vecs[i*2];
+		end[1] = p[1] + delta_vecs[i*2+1];
+		end[2] = p[2] - 2048.0f;
 
-	//
-	// add dynamic lights
-	//
+		r = RecursiveLightPoint (r_worldmodel->nodes, p, end);
 
-
-	//PANZERSCHREK - do not need it
-	/*
-	light = 0;
-	for (lnum=0 ; lnum<r_newrefdef.num_dlights ; lnum++)
-	{
-		dl = &r_newrefdef.dlights[lnum];
-		VectorSubtract (currententity->origin,
-						dl->origin,
-						dist);
-		add = dl->intensity - VectorLength(dist);
-		add *= (1.0/256);
-		if (add > 0)
+		if (r == -1)
 		{
-			VectorMA (color, add, dl->color, color);
+			//VectorCopy (vec3_origin, color);
+			pointcolor[0]= pointcolor[1]= pointcolor[2]= 0.5f;//PANZER - middle lighting
 		}
-	}*/
+		accamulated_color[0]+= pointcolor[0];
+		accamulated_color[1]+= pointcolor[1];
+		accamulated_color[2]+= pointcolor[2];
+	}
+	float m= 1.0f / float(sizeof(delta_vecs)/sizeof(float)/2);
+	color[0]= accamulated_color[0] * m;
+	color[1]= accamulated_color[1] * m;
+	color[2]= accamulated_color[2] * m;
 
 }

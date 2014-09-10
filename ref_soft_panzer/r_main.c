@@ -164,6 +164,7 @@ cvar_t	*r_palettized_textures;
 cvar_t	*r_interpolate_videos;
 cvar_t	*r_clear_color_buffer;
 cvar_t  *r_surface_caching;
+cvar_t  *r_use_ddraw;
 
 /*
 after map switching some resources ( models and ther skins, textures )
@@ -405,6 +406,7 @@ void PANZER_Register (void)
 	r_interpolate_videos= ri.Cvar_Get( "r_interpolate_videos", "1", CVAR_ARCHIVE );
 	r_clear_color_buffer= ri.Cvar_Get( "r_clear_color_buffer", "0", CVAR_ARCHIVE );
 	r_surface_caching= ri.Cvar_Get( "r_surface_caching", "1", CVAR_ARCHIVE );
+	r_use_ddraw= ri.Cvar_Get( "r_use_ddraw", "1", CVAR_ARCHIVE );r_use_ddraw->modified= false;
 
 	//ri.Cmd_AddCommand( "flashlight", R_Flashlight_f );
 	//ri.Cmd_ExecuteText( 0, "bind f flashlight" );
@@ -547,8 +549,7 @@ void PANZER_DrawStretchRaw(int x, int y, int w, int h, int cols, int rows, byte 
 				int ddu1= 256 - ddu;
 				int ddv= (v&65535)>>8;
 				int ddv1= 256 - ddv;
-				int colors[16];
-				int mixed_colors[8];
+				int colors[12];
 				int ind;
 				int coord= iu + iv*cols;
 				ind= data[coord]<<2;
@@ -556,28 +557,28 @@ void PANZER_DrawStretchRaw(int x, int y, int w, int h, int cols, int rows, byte 
 				colors[1 ]= cinematic_palette[ind+1];
 				colors[2 ]= cinematic_palette[ind+2];
 				coord++; ind= data[coord]<<2;
-				colors[4 ]= cinematic_palette[ind  ];
-				colors[5 ]= cinematic_palette[ind+1];
-				colors[6 ]= cinematic_palette[ind+2];
+				colors[3 ]= cinematic_palette[ind  ];
+				colors[4 ]= cinematic_palette[ind+1];
+				colors[5 ]= cinematic_palette[ind+2];
 				coord+= cols; ind= data[coord]<<2;
-				colors[12]= cinematic_palette[ind  ];
-				colors[13]= cinematic_palette[ind+1];
-				colors[14]= cinematic_palette[ind+2];
+				colors[9 ]= cinematic_palette[ind  ];
+				colors[10]= cinematic_palette[ind+1];
+				colors[11]= cinematic_palette[ind+2];
 				coord--; ind= data[coord]<<2;
-				colors[8 ]= cinematic_palette[ind  ];
-				colors[9 ]= cinematic_palette[ind+1];
-				colors[10]= cinematic_palette[ind+2];
+				colors[6 ]= cinematic_palette[ind  ];
+				colors[7 ]= cinematic_palette[ind+1];
+				colors[8 ]= cinematic_palette[ind+2];
 
-				mixed_colors[0]= ( colors[ 0] * ddu1 + colors[ 4] * ddu );
-				mixed_colors[1]= ( colors[ 1] * ddu1 + colors[ 5] * ddu );
-				mixed_colors[2]= ( colors[ 2] * ddu1 + colors[ 6] * ddu );
-				mixed_colors[4]= ( colors[ 8] * ddu1 + colors[12] * ddu );
-				mixed_colors[5]= ( colors[ 9] * ddu1 + colors[13] * ddu );
-				mixed_colors[6]= ( colors[10] * ddu1 + colors[14] * ddu );
+				colors[0]= ( colors[0] * ddu1 + colors[ 3] * ddu );
+				colors[1]= ( colors[1] * ddu1 + colors[ 4] * ddu );
+				colors[2]= ( colors[2] * ddu1 + colors[ 5] * ddu );
+				colors[3]= ( colors[6] * ddu1 + colors[ 9] * ddu );
+				colors[4]= ( colors[7] * ddu1 + colors[10] * ddu );
+				colors[5]= ( colors[8] * ddu1 + colors[11] * ddu );
 
-				dst[0]= ( mixed_colors[0] * ddv1 + mixed_colors[4] * ddv ) >> 16;
-				dst[1]= ( mixed_colors[1] * ddv1 + mixed_colors[5] * ddv ) >> 16;
-				dst[2]= ( mixed_colors[2] * ddv1 + mixed_colors[6] * ddv ) >> 16;
+				dst[0]= ( colors[0] * ddv1 + colors[3] * ddv ) >> 16;
+				dst[1]= ( colors[1] * ddv1 + colors[4] * ddv ) >> 16;
+				dst[2]= ( colors[2] * ddv1 + colors[5] * ddv ) >> 16;
 
 			}
 	}//if iterpolate
@@ -613,12 +614,14 @@ void PANZER_BeginFrame( float camera_separation )
 {
 	r_framecount++;
 
-	if( r_use_multithreading->modified || r_lightmap_mode->modified || r_lightmap_saturation->modified || r_palettized_textures->modified )
+	if( r_use_multithreading->modified || r_lightmap_mode->modified || r_lightmap_saturation->modified || 
+		r_palettized_textures->modified || r_use_ddraw->modified )
 	{
 		r_use_multithreading->modified= false;
 		r_lightmap_mode->modified= false;
 		r_lightmap_saturation->modified= false;
 		r_palettized_textures->modified= false;
+		r_use_ddraw->modified= false;
 		ri.Cmd_ExecuteText( 0, "vid_restart" );
 	}
 	if( sw_mode->modified || vid_fullscreen->modified )

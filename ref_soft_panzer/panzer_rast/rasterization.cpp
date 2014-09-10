@@ -1800,7 +1800,7 @@ void CalculateLineGradients()
 		else if( lighting_mode == LIGHTING_PER_VERTEX_COLORED )
 		{
 			 for( int i= 0; i< 3; i++ )
-				d_line_color[i]= Fixed16Div( 3*( triangle_in_color[i+8] * inv_vertex_z[2] - triangle_in_color[i+4] * inv_vertex_z[2] ), dx );
+				d_line_color[i]= Fixed16Div( 3*( triangle_in_color[i+8] * inv_vertex_z[2] - triangle_in_color[i+4] * inv_vertex_z[1] ), dx );
 		}
 		else if( lighting_mode == LIGHTING_FROM_LIGHTMAP || lighting_mode == LIGHTING_FROM_LIGHTMAP_OVERBRIGHT )
 		{

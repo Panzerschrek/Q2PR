@@ -618,6 +618,7 @@ extern cvar_t   *r_dlights_saturation;
 extern cvar_t   *r_palettized_textures;
 extern cvar_t   *r_clear_color_buffer;
 extern cvar_t   *r_surface_caching;
+extern cvar_t	*r_use_ddraw;
 
 
 

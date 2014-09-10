@@ -44,8 +44,11 @@ model_t	mod_inline[MAX_MOD_KNOWN];
 int		registration_sequence;
 int		modfilelen;
 
-//===============================================================================
+//panzer - add entities parsing
+int			numentitychars;
+char		map_entitystring[MAX_MAP_ENTSTRING];
 
+//===============================================================================
 
 /*
 ================
@@ -282,6 +285,26 @@ byte *Mod_ClusterPVS (int cluster, model_t *model)
 */
 
 byte	*mod_base;
+
+
+//PANZER - add it
+void Mod_LoadStaticLights( lump_t *l )
+{
+	if (l->filelen > MAX_MAP_ENTSTRING)
+		ri.Sys_Error (ERR_DROP, "Map has too large entity lump");
+
+	numentitychars= l->filelen;
+	memcpy( map_entitystring, mod_base + l->fileofs, l->filelen );
+	/*//lights look like:
+	{
+		"classname" "light"
+		"origin" "416 -96 48"
+		"light" "100"
+		"color" "1 0.322335 0.780903"
+	}
+	*/
+}
+
 
 
 void SaturationCorrection( unsigned char* color, int sat/*0-255*/, int inv_sat )
@@ -994,6 +1017,7 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer)
 	Mod_LoadLeafs (&header->lumps[LUMP_LEAFS]);
 	Mod_LoadNodes (&header->lumps[LUMP_NODES]);
 	Mod_LoadSubmodels (&header->lumps[LUMP_MODELS]);
+	Mod_LoadStaticLights( &header->lumps[LUMP_ENTITIES] );
 	r_numvisleafs = 0;
 	R_NumberLeafs (loadmodel->nodes);
 	
