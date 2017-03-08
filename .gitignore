@@ -1,0 +1,15 @@
+# Windows binaries
+*.exe
+*.dll
+
+# Oputput directiries
+release/*
+debug/*
+ref_soft_panzer/debug
+ref_soft_panzer/release
+
+# Visual studio stuff
+*.user
+*.suo
+*.ncb
+
