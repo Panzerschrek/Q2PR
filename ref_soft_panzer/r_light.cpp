@@ -223,7 +223,7 @@ void GenerateLightmapColored( unsigned char* out, msurface_t* surf )
 		if( scale_values[0] < 0 ) scale_values[0]= 0;
 		if( scale_values[1] < 0 ) scale_values[1]= 0;
 		if( scale_values[2] < 0 ) scale_values[2]= 0;
-		ColorIntSwap( scale_values );
+		//ColorIntSwap( scale_values );
 		unsigned char* in= surf->samples + ds*samp;
 		for( int i= 0; i< ds; i+=4 )
 		{

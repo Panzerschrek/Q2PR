@@ -23,7 +23,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 ** This handles DIB section management under Windows.
 **
 */
-#include "..\ref_soft\r_local.h"
+#include "..\ref_soft_panzer\r_local.h"
 #include "rw_win.h"
 
 #ifndef _WIN32

@@ -862,7 +862,7 @@ void DrawEntities(m_Mat4* mat, m_Mat4* normal_mat, vec3_t cam_pos, bool alpha_en
 	}
 }
 
-
+/*
 void InitPlayerFlashlight()
 {
 	VectorCopy( r_newrefdef.vieworg, player_flashlight.origin );
@@ -879,7 +879,7 @@ void InitPlayerFlashlight()
 	player_flashlight.direction[1]= sinf(a) * cosf(b);
 	player_flashlight.direction[2]= sinf(b);
 }
-
+*/
 
 
 extern void DrawSkyBox( const m_Mat4* rot_mat, vec3_t cam_pos );
@@ -940,7 +940,7 @@ void DrawFullscreenBlend()
 extern "C" void PANZER_RenderFrame(refdef_t *fd)
 {
 	r_newrefdef= *fd;
-	InitPlayerFlashlight();
+	//InitPlayerFlashlight();
 	SetWorldFrame( int(r_newrefdef.time*2.0f) );
 
 	BeginSurfFrame();

@@ -238,6 +238,10 @@ static qboolean SWimp_InitGraphics( qboolean fullscreen )
 extern void PRast_MirrorFramebufferVertical();
 extern void PRast_MakeGammaCorrection(const unsigned char* gamma_table);
 
+void SWimp_EndFrame (void)
+{
+	if ( !sw_state.fullscreen )
+	{
 		if ( sww_state.palettized )
 		{
 //			holdpal = SelectPalette(hdcScreen, hpalDIB, FALSE);

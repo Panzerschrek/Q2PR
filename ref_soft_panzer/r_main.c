@@ -82,7 +82,7 @@ vec3_t	vpn, base_vpn;
 vec3_t	vright, base_vright;
 vec3_t	r_origin;
 
-flashlight_t player_flashlight;
+//flashlight_t player_flashlight;
 //
 // screen size info
 //
