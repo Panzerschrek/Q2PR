@@ -34,9 +34,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
-#include <stdlib.h>
 #include <time.h>
 
 #if (defined _M_IX86 || defined __i386__) && !defined C_ONLY && !defined __sun__
@@ -52,7 +52,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #endif
 
 typedef unsigned char 		byte;
+
+
+#ifdef __cplusplus
+typedef int qboolean;//panzer hack
+
+#else
 typedef enum {false, true}	qboolean;
+#endif
 
 
 #ifndef NULL
@@ -237,6 +244,9 @@ int		BigLong (int l);
 int		LittleLong (int l);
 float	BigFloat (float l);
 float	LittleFloat (float l);
+
+void ColorByteSwap( unsigned char* color );
+void ColorFloatSwap( float* color );
 
 void	Swap_Init (void);
 char	*va(char *format, ...);
@@ -587,6 +597,7 @@ typedef struct
 #define EF_TRACKERTRAIL		0x80000000
 //ROGUE
 
+//PANZER - alias flags
 // entity_state_t->renderfx flags
 #define	RF_MINLIGHT			1		// allways have some light (viewmodel)
 #define	RF_VIEWERMODEL		2		// don't draw through eyes, only mirrors
@@ -598,7 +609,7 @@ typedef struct
 #define RF_BEAM				128
 #define	RF_CUSTOMSKIN		256		// skin is an index in image_precache
 #define	RF_GLOW				512		// pulse lighting for bonus items
-#define RF_SHELL_RED		1024
+#define RF_SHELL_RED		1024//PANZER - monolighted model
 #define	RF_SHELL_GREEN		2048
 #define RF_SHELL_BLUE		4096
 

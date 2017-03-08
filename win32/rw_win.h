@@ -54,12 +54,15 @@ typedef struct
 
 extern swwstate_t sww_state;
 
+
+
 /*
 ** DIB code
 */
-qboolean DIB_Init( unsigned char **ppbuffer, int *ppitch );
-void     DIB_Shutdown( void );
-void     DIB_SetPalette( const unsigned char *palette );
+qboolean DIB_Init( unsigned char **ppbuffer, int *ppitch, swwstate_t* state );
+qboolean Panzer_DIB_Init( unsigned char **ppbuffer, swwstate_t* state );
+void     DIB_Shutdown( swwstate_t* state  );
+void     DIB_SetPalette( const unsigned char *palette, swwstate_t* state  );
 
 qboolean DDRAW_Init( unsigned char **ppbuffer, int *ppitch );
 void     DDRAW_Shutdown( void );

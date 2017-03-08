@@ -216,6 +216,7 @@ void R_ConcatRotations (float in1[3][3], float in2[3][3], float out[3][3])
 R_ConcatTransforms
 ================
 */
+//PANZER - matrix multiplication code
 void R_ConcatTransforms (float in1[3][4], float in2[3][4], float out[3][4])
 {
 	out[0][0] = in1[0][0] * in2[0][0] + in1[0][1] * in2[1][0] +
@@ -942,12 +943,35 @@ int		(*_LittleLong) (int l);
 float	(*_BigFloat) (float l);
 float	(*_LittleFloat) (float l);
 
-short	BigShort(short l){return _BigShort(l);}
+//panzer - remove it, make simple functions
+/*short	BigShort(short l){return _BigShort(l);}
 short	LittleShort(short l) {return _LittleShort(l);}
 int		BigLong (int l) {return _BigLong(l);}
 int		LittleLong (int l) {return _LittleLong(l);}
 float	BigFloat (float l) {return _BigFloat(l);}
-float	LittleFloat (float l) {return _LittleFloat(l);}
+float	LittleFloat (float l) {return _LittleFloat(l);}*/
+
+//call specific functions only on non-x86 platforms
+short	BigShort(short l){return l;}
+short	LittleShort(short l) {return l;}
+int		BigLong (int l) {return l;}
+int		LittleLong (int l) {return l;}
+float	BigFloat (float l) {return l;}
+float	LittleFloat (float l) {return l;}
+
+void ColorByteSwap( unsigned char* color )
+{
+	unsigned char tmp= color[0];
+	color[0]= color[2];
+	color[2]= tmp;
+}
+void ColorFloatSwap( float* color )
+{
+	float tmp= color[0];
+	color[0]= color[2];
+	color[2]= tmp;
+}
+
 
 short   ShortSwap (short l)
 {
@@ -1002,40 +1026,6 @@ float FloatNoSwap (float f)
 {
 	return f;
 }
-
-/*
-================
-Swap_Init
-================
-*/
-void Swap_Init (void)
-{
-	byte	swaptest[2] = {1,0};
-
-// set the byte swapping variables in a portable manner	
-	if ( *(short *)swaptest == 1)
-	{
-		bigendien = false;
-		_BigShort = ShortSwap;
-		_LittleShort = ShortNoSwap;
-		_BigLong = LongSwap;
-		_LittleLong = LongNoSwap;
-		_BigFloat = FloatSwap;
-		_LittleFloat = FloatNoSwap;
-	}
-	else
-	{
-		bigendien = true;
-		_BigShort = ShortNoSwap;
-		_LittleShort = ShortSwap;
-		_BigLong = LongNoSwap;
-		_LittleLong = LongSwap;
-		_BigFloat = FloatNoSwap;
-		_LittleFloat = FloatSwap;
-	}
-
-}
-
 
 
 /*

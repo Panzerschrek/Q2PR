@@ -29,21 +29,76 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 ** SWimp_SetPalette
 ** SWimp_Shutdown
 */
-#include "..\ref_soft\r_local.h"
+#include "..\ref_soft_panzer\r_local.h"
 #include "rw_win.h"
 #include "winquake.h"
+
 
 // Console variables that we need to access from this module
 
 swwstate_t sww_state;
+
+
+static HWND console_handle;
+void SWimp_OpenSystemConsole()
+{
+	AllocConsole();
+	freopen("conin$","r",stdin);
+	freopen("conout$","w",stdout);
+	freopen("conout$","w",stderr);
+	console_handle = GetConsoleWindow();
+	MoveWindow(console_handle,1,1,680,480,1);
+	printf("[rw_imp.c] Console initialized.\n");
+}
+
+
+static unsigned short old_gamma[256*3];
+void SWimp_SaveOldHWGamma()
+{
+	HDC desktop_hdc = GetDC( GetDesktopWindow() );
+	if( GetDeviceGammaRamp( desktop_hdc, old_gamma ) == FALSE )
+		sw_state.hw_gamma_supported= 0;
+	else
+		sw_state.hw_gamma_supported= 1;
+	ReleaseDC( GetDesktopWindow(), desktop_hdc );
+}
+
+void SWimp_SetHWGamma()
+{
+	unsigned short gamma[3][256];
+	int i;
+
+	for( i= 0; i< 256; i++ )
+	{
+		gamma[0][i]=
+		gamma[1][i]=
+		gamma[2][i]= sw_state.gammatable[i]<<8;
+	}
+
+	if( SetDeviceGammaRamp( sww_state.hDC, gamma ) == FALSE )
+		printf( "hw gamma change error!\n" );
+}
+
+void SWimp_RestoreHWGamma()
+{
+	if( sw_state.hw_gamma_supported )
+	{
+		HDC desktop_hdc = GetDC( GetDesktopWindow() );
+		SetDeviceGammaRamp( desktop_hdc, old_gamma );
+		ReleaseDC( GetDesktopWindow(), desktop_hdc );
+	}
+}
+
 
 /*
 ** VID_CreateWindow
 */
 #define	WINDOW_CLASS_NAME "Quake 2"
 
-void VID_CreateWindow( int width, int height, int stylebits )
+void VID_CreateWindow( int width, int height, int stylebits, swwstate_t* state )
 {
+	static int is_class= 0;//PANZER HACK
+
 	WNDCLASS		wc;
 	RECT			r;
 	cvar_t			*vid_xpos, *vid_ypos, *vid_fullscreen;
@@ -71,8 +126,13 @@ void VID_CreateWindow( int width, int height, int stylebits )
     wc.lpszMenuName  = 0;
     wc.lpszClassName = WINDOW_CLASS_NAME;
 
-    if (!RegisterClass (&wc) )
+
+	if (!RegisterClass (&wc) && ! is_class )
 		ri.Sys_Error (ERR_FATAL, "Couldn't register window class");
+    //if (!RegisterClass (&wc) )
+	//	ri.Sys_Error (ERR_FATAL, "Couldn't register window class");
+
+	is_class= 1;//PANZER HACK
 
 	r.left = 0;
 	r.top = 0;
@@ -86,7 +146,7 @@ void VID_CreateWindow( int width, int height, int stylebits )
 	x = vid_xpos->value;
 	y = vid_ypos->value;
 
-	sww_state.hWnd = CreateWindowEx (
+	state->hWnd = CreateWindowEx (
 		exstyle,
 		 WINDOW_CLASS_NAME,
 		 "Quake 2",
@@ -97,17 +157,18 @@ void VID_CreateWindow( int width, int height, int stylebits )
 		 sww_state.hInstance,
 		 NULL);
 
-	if (!sww_state.hWnd)
+	if (!state->hWnd)
 		ri.Sys_Error (ERR_FATAL, "Couldn't create window");
 	
-	ShowWindow( sww_state.hWnd, SW_SHOWNORMAL );
-	UpdateWindow( sww_state.hWnd );
-	SetForegroundWindow( sww_state.hWnd );
-	SetFocus( sww_state.hWnd );
+	ShowWindow( state->hWnd, SW_SHOWNORMAL );
+	UpdateWindow( state->hWnd );
+	SetForegroundWindow( state->hWnd );
+	SetFocus( state->hWnd );
 
 	// let the sound and input subsystems know about the new window
 	ri.Vid_NewWindow (width, height);
 }
+
 
 /*
 ** SWimp_Init
@@ -139,16 +200,15 @@ static qboolean SWimp_InitGraphics( qboolean fullscreen )
 	SWimp_Shutdown ();
 
 	// create a new window
-	VID_CreateWindow (vid.width, vid.height, WINDOW_STYLE);
+	VID_CreateWindow (vid.width, vid.height, WINDOW_STYLE, &sww_state );
 
 	// initialize the appropriate subsystem
 	if ( !fullscreen )
 	{
-		if ( !DIB_Init( &vid.buffer, &vid.rowbytes ) )
+		if ( !Panzer_DIB_Init( &vid.buffer, &sww_state ) )
 		{
 			vid.buffer = 0;
 			vid.rowbytes = 0;
-
 			return false;
 		}
 	}
@@ -173,10 +233,11 @@ static qboolean SWimp_InitGraphics( qboolean fullscreen )
 ** front buffer.  In the Win32 case it uses BitBlt or BltFast depending
 ** on whether we're using DIB sections/GDI or DDRAW.
 */
-void SWimp_EndFrame (void)
-{
-	if ( !sw_state.fullscreen )
-	{
+
+
+extern void PRast_MirrorFramebufferVertical();
+extern void PRast_MakeGammaCorrection(const unsigned char* gamma_table);
+
 		if ( sww_state.palettized )
 		{
 //			holdpal = SelectPalette(hdcScreen, hpalDIB, FALSE);
@@ -190,19 +251,15 @@ void SWimp_EndFrame (void)
 				vid.height,
 				sww_state.hdcDIBSection,
 				0, 0,
-				SRCCOPY );
-
-		if ( sww_state.palettized )
-		{
-//			SelectPalette(hdcScreen, holdpal, FALSE);
-		}
+				SRCCOPY );//main copy function
+		
+		return;
 	}
 	else
-	{
+	{//DirectDraw magic here
 		RECT r;
 		HRESULT rval;
 		DDSURFACEDESC ddsd;
-
 		r.left = 0;
 		r.top = 0;
 		r.right = vid.width;
@@ -225,6 +282,7 @@ void SWimp_EndFrame (void)
 															&r, 
 															DDBLTFAST_WAIT );
 			}
+
 
 			if ( ( rval = sww_state.lpddsFrontBuffer->lpVtbl->Flip( sww_state.lpddsFrontBuffer,
 															 NULL, DDFLIP_WAIT ) ) == DDERR_SURFACELOST )
@@ -256,6 +314,7 @@ void SWimp_EndFrame (void)
 		sww_state.lpddsOffScreenBuffer->lpVtbl->Lock( sww_state.lpddsOffScreenBuffer, NULL, &ddsd, DDLOCK_WAIT, NULL );
 
 		vid.buffer = ddsd.lpSurface;
+		PRast_SetFramebuffer(vid.buffer);
 		vid.rowbytes = ddsd.lPitch;
 	}
 }
@@ -317,37 +376,10 @@ rserr_t SWimp_SetMode( int *pwidth, int *pheight, int mode, qboolean fullscreen 
 		}
 	}
 #endif
-	R_GammaCorrectAndSetPalette( ( const unsigned char * ) d_8to24table );
+	//R_GammaCorrectAndSetPalette( ( const unsigned char * ) d_8to24table );
 	sww_state.initializing = true;
 
 	return retval;
-}
-
-/*
-** SWimp_SetPalette
-**
-** System specific palette setting routine.  A NULL palette means
-** to use the existing palette.  The palette is expected to be in
-** a padded 4-byte xRGB format.
-*/
-void SWimp_SetPalette( const unsigned char *palette )
-{
-	// MGL - what the fuck was kendall doing here?!
-	// clear screen to black and change palette
-	//	for (i=0 ; i<vid.height ; i++)
-	//		memset (vid.buffer + i*vid.rowbytes, 0, vid.width);
-
-	if ( !palette )
-		palette = ( const unsigned char * ) sw_state.currentpalette;
-
-	if ( !sw_state.fullscreen )
-	{
-		DIB_SetPalette( ( const unsigned char * ) palette );
-	}
-	else
-	{
-		DDRAW_SetPalette( ( const unsigned char * ) palette );
-	}
 }
 
 /*
@@ -359,7 +391,7 @@ void SWimp_SetPalette( const unsigned char *palette )
 void SWimp_Shutdown( void )
 {
 	ri.Con_Printf( PRINT_ALL, "Shutting down SW imp\n" );
-	DIB_Shutdown();
+	DIB_Shutdown( &sww_state );
 	DDRAW_Shutdown();
 
 	if ( sww_state.hWnd )
@@ -469,3 +501,65 @@ void Sys_SetFPCW( void )
 }
 #endif
 
+
+void Sys_CreateMutex( qmutex_t* mutex )
+{
+	int err;
+	int val;
+	val= InitializeCriticalSectionAndSpinCount( &(mutex->mutex_handle), 200 );
+	if(val==0)
+	{
+		err= GetLastError();
+		printf("critical section creating error!\n" );
+	}
+}
+
+void Sys_DestroyMutex( qmutex_t* mutex )
+{
+	DeleteCriticalSection( &(mutex->mutex_handle) );
+}
+
+void Sys_MutexLock( qmutex_t* mutex )
+{
+	EnterCriticalSection( &(mutex->mutex_handle) );
+}
+void Sys_MutexUnlock( qmutex_t* mutex )
+{
+	LeaveCriticalSection( &(mutex->mutex_handle) );
+}
+
+qthread_t Sys_CreateThread( unsigned int (__stdcall*func)(void*), void* params )
+{
+	qthread_t result;
+	result.thread_handle= CreateThread( 
+		NULL, 0, func, params, 0, &result.thread_id );
+	return result;
+}
+
+void Sys_ExitThread()
+{
+	ExitThread(0);
+}
+
+void Sys_DestroyThread(qthread_t thread)
+{
+	TerminateThread(thread.thread_handle,0);
+}
+
+
+void Sys_CreateSemaphore( qsemaphore_t* sem, const char* name )
+{
+	sem->sem_handle= CreateSemaphore( NULL, 1, 1, name );
+}
+void Sys_SemaphoreWait( qsemaphore_t* sem )
+{
+	WaitForSingleObject( sem->sem_handle, INFINITE );
+}
+void Sys_SemaphoreRelease( qsemaphore_t* sem )
+{
+	int result= ReleaseSemaphore( sem->sem_handle, 1, NULL );
+	if( result == 0 )
+	{
+		//error here
+	}
+}

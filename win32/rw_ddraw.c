@@ -111,7 +111,8 @@ ri.Con_Printf( PRINT_ALL, "Initializing DirectDraw\n");
 	*/
 	ri.Con_Printf( PRINT_ALL, "...finding display mode\n" );
 	ri.Con_Printf( PRINT_ALL, "...setting linear mode: " );
-	if ( ( ddrval = sww_state.lpDirectDraw->lpVtbl->SetDisplayMode( sww_state.lpDirectDraw, vid.width, vid.height, 8 ) ) == DD_OK )
+	//if ( ( ddrval = sww_state.lpDirectDraw->lpVtbl->SetDisplayMode( sww_state.lpDirectDraw, vid.width, vid.height, 8 ) ) == DD_OK )
+	if ( ( ddrval = sww_state.lpDirectDraw->lpVtbl->SetDisplayMode( sww_state.lpDirectDraw, vid.width, vid.height, 32 ) ) == DD_OK )
 	{
 		ri.Con_Printf( PRINT_ALL, "ok\n" );
 	}
@@ -144,7 +145,8 @@ ri.Con_Printf( PRINT_ALL, "Initializing DirectDraw\n");
 		/*
 		** change our display mode
 		*/
-		if ( ( ddrval = sww_state.lpDirectDraw->lpVtbl->SetDisplayMode( sww_state.lpDirectDraw, vid.width, vid.height, 8 ) ) != DD_OK )
+		//if ( ( ddrval = sww_state.lpDirectDraw->lpVtbl->SetDisplayMode( sww_state.lpDirectDraw, vid.width, vid.height, 32 ) ) != DD_OK )
+		if ( ( ddrval = sww_state.lpDirectDraw->lpVtbl->SetDisplayMode( sww_state.lpDirectDraw, vid.width, vid.height, 32 ) ) != DD_OK )
 		{
 			ri.Con_Printf( PRINT_ALL, "failed SDM - %s\n", DDrawError( ddrval ) );
 			goto fail;
@@ -218,7 +220,7 @@ ri.Con_Printf( PRINT_ALL, "Initializing DirectDraw\n");
 	** create our DIRECTDRAWPALETTE
 	*/
 	ri.Con_Printf( PRINT_ALL, "...creating palette: " );
-	if ( ( ddrval = sww_state.lpDirectDraw->lpVtbl->CreatePalette( sww_state.lpDirectDraw,
+	/*if ( ( ddrval = sww_state.lpDirectDraw->lpVtbl->CreatePalette( sww_state.lpDirectDraw,
 														DDPCAPS_8BIT | DDPCAPS_ALLOW256,
 														palentries,
 														&sww_state.lpddpPalette,
@@ -226,19 +228,19 @@ ri.Con_Printf( PRINT_ALL, "Initializing DirectDraw\n");
 	{
 		ri.Con_Printf( PRINT_ALL, "failed - %s\n", DDrawError( ddrval ) );
 		goto fail;
-	}
+	}*/
 	ri.Con_Printf( PRINT_ALL, "ok\n" );
 
 	ri.Con_Printf( PRINT_ALL, "...setting palette: " );
-	if ( ( ddrval = sww_state.lpddsFrontBuffer->lpVtbl->SetPalette( sww_state.lpddsFrontBuffer,
+	/*if ( ( ddrval = sww_state.lpddsFrontBuffer->lpVtbl->SetPalette( sww_state.lpddsFrontBuffer,
 														 sww_state.lpddpPalette ) ) != DD_OK )
 	{
 		ri.Con_Printf( PRINT_ALL, "failed - %s\n", DDrawError( ddrval ) );
 		goto fail;
-	}
+	}*/
 	ri.Con_Printf( PRINT_ALL, "ok\n" );
 
-	DDRAW_SetPalette( ( const unsigned char * ) sw_state.currentpalette );
+	//DDRAW_SetPalette( ( const unsigned char * ) sw_state.currentpalette );
 
 	/*
 	** lock the back buffer
@@ -262,7 +264,8 @@ ri.Con_Printf( PRINT_ALL, "ok\n" );
 		memset( *ppbuffer + i * *ppitch, 0, *ppitch );
 	}
 
-	sww_state.palettized = true;
+	//sww_state.palettized = true;
+	sww_state.palettized = false;
 
 	return true;
 fail:
@@ -338,12 +341,12 @@ void DDRAW_Shutdown( void )
 		sww_state.lpddsFrontBuffer = NULL;
 	}
 
-	if (sww_state.lpddpPalette)
+	/*if (sww_state.lpddpPalette)
 	{
 		ri.Con_Printf( PRINT_ALL, "...releasing palette\n");
 		sww_state.lpddpPalette->lpVtbl->Release ( sww_state.lpddpPalette );
 		sww_state.lpddpPalette = NULL;
-	}
+	}*/
 
 	if ( sww_state.lpDirectDraw )
 	{

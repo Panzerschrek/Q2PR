@@ -77,15 +77,86 @@ typedef struct
 
 static identitypalette_t s_ipal;
 
-static void DIB_SaveSystemColors( void );
-static void DIB_RestoreSystemColors( void );
+static void DIB_SaveSystemColors( swwstate_t* state );
+static void DIB_RestoreSystemColors( swwstate_t* state );
+
+
+qboolean Panzer_DIB_Init( unsigned char **ppbuffer, swwstate_t* state )
+{
+	dibinfo_t   dibheader;
+	BITMAPINFO *pbmiDIB = ( BITMAPINFO * ) &dibheader;
+
+	memset( &dibheader, 0, sizeof( dibheader ) );
+	sww_state.palettized= false;
+
+	sww_state.hDC = GetDC( sww_state.hWnd );
+	/*
+	** fill in the BITMAPINFO struct
+	*/
+	pbmiDIB->bmiHeader.biSize          = sizeof(BITMAPINFOHEADER);
+	pbmiDIB->bmiHeader.biWidth         = vid.width;
+	pbmiDIB->bmiHeader.biHeight        = vid.height;
+	pbmiDIB->bmiHeader.biPlanes        = 1;
+	pbmiDIB->bmiHeader.biBitCount      = 32;
+	pbmiDIB->bmiHeader.biCompression   = BI_RGB;//BI_BITFIELDS
+	pbmiDIB->bmiHeader.biSizeImage     = 0;
+	pbmiDIB->bmiHeader.biXPelsPerMeter = 0;
+	pbmiDIB->bmiHeader.biYPelsPerMeter = 0;
+	pbmiDIB->bmiHeader.biClrUsed       = 0;
+	pbmiDIB->bmiHeader.biClrImportant  = 0;
+	/*pbmiDIB->bmiColors[0].rgbRed= 0;
+	pbmiDIB->bmiColors[0].rgbGreen= 0;
+	pbmiDIB->bmiColors[0].rgbBlue= 255;
+	pbmiDIB->bmiColors[0].rgbReserved= 0;
+	pbmiDIB->bmiColors[1].rgbRed= 0;
+	pbmiDIB->bmiColors[1].rgbGreen= 255;
+	pbmiDIB->bmiColors[1].rgbBlue= 0;
+	pbmiDIB->bmiColors[1].rgbReserved= 0;
+	pbmiDIB->bmiColors[2].rgbRed= 255;
+	pbmiDIB->bmiColors[2].rgbGreen= 0;
+	pbmiDIB->bmiColors[2].rgbBlue= 0;
+	pbmiDIB->bmiColors[2].rgbReserved= 0;*/
+
+
+	sww_state.hDIBSection = CreateDIBSection( sww_state.hDC,
+		                                     pbmiDIB,
+											 DIB_RGB_COLORS,
+											 &sww_state.pDIBBase,
+											 NULL,
+											 0 );
+	*ppbuffer	= sww_state.pDIBBase;
+
+	if ( sww_state.hDIBSection == NULL )
+	{
+		ri.Con_Printf( PRINT_ALL, "DIB_Init() - CreateDIBSection failed\n" );
+		goto fail;
+	}
+	memset( sww_state.pDIBBase, 0xff, vid.width * vid.height );
+
+	if ( ( sww_state.hdcDIBSection = CreateCompatibleDC( sww_state.hDC ) ) == NULL )
+	{
+		ri.Con_Printf( PRINT_ALL, "DIB_Init() - CreateCompatibleDC failed\n" );
+		goto fail;
+	}
+	if ( ( previously_selected_GDI_obj = SelectObject( sww_state.hdcDIBSection, sww_state.hDIBSection ) ) == NULL )
+	{
+		ri.Con_Printf( PRINT_ALL, "DIB_Init() - SelectObject failed\n" );
+		goto fail;
+	}
+
+	return true;
+	fail:
+	DIB_Shutdown( &sww_state );
+	return false;
+
+}
 
 /*
 ** DIB_Init
 **
 ** Builds our DIB section
 */
-qboolean DIB_Init( unsigned char **ppbuffer, int *ppitch )
+qboolean DIB_Init( unsigned char **ppbuffer, int *ppitch, swwstate_t* state )
 {
 	dibinfo_t   dibheader;
 	BITMAPINFO *pbmiDIB = ( BITMAPINFO * ) &dibheader;
@@ -96,29 +167,29 @@ qboolean DIB_Init( unsigned char **ppbuffer, int *ppitch )
 	/*
 	** grab a DC
 	*/
-	if ( !sww_state.hDC )
+	if ( !state->hDC )
 	{
-		if ( ( sww_state.hDC = GetDC( sww_state.hWnd ) ) == NULL )
+		if ( ( state->hDC = GetDC( state->hWnd ) ) == NULL )
 			return false;
 	}
 
 	/*
 	** figure out if we're running in an 8-bit display mode
 	*/
- 	if ( GetDeviceCaps( sww_state.hDC, RASTERCAPS ) & RC_PALETTE )
+ 	if ( GetDeviceCaps( state->hDC, RASTERCAPS ) & RC_PALETTE )
 	{
-		sww_state.palettized = true;
+		state->palettized = true;
 
 		// save system colors
 		if ( !s_systemcolors_saved )
 		{
-			DIB_SaveSystemColors();
+			DIB_SaveSystemColors( state );
 			s_systemcolors_saved = true;
 		}
 	}
 	else
 	{
-		sww_state.palettized = false;
+		state->palettized = false;
 	}
 
 	/*
@@ -149,14 +220,14 @@ qboolean DIB_Init( unsigned char **ppbuffer, int *ppitch )
 	/*
 	** create the DIB section
 	*/
-	sww_state.hDIBSection = CreateDIBSection( sww_state.hDC,
+	state->hDIBSection = CreateDIBSection( state->hDC,
 		                                     pbmiDIB,
 											 DIB_RGB_COLORS,
-											 &sww_state.pDIBBase,
+											 &state->pDIBBase,
 											 NULL,
 											 0 );
 
-	if ( sww_state.hDIBSection == NULL )
+	if ( state->hDIBSection == NULL )
 	{
 		ri.Con_Printf( PRINT_ALL, "DIB_Init() - CreateDIBSection failed\n" );
 		goto fail;
@@ -165,27 +236,27 @@ qboolean DIB_Init( unsigned char **ppbuffer, int *ppitch )
 	if ( pbmiDIB->bmiHeader.biHeight > 0 )
     {
 		// bottom up
-		*ppbuffer	= sww_state.pDIBBase + ( vid.height - 1 ) * vid.width;
+		*ppbuffer	= state->pDIBBase + ( vid.height - 1 ) * vid.width;
 		*ppitch		= -vid.width;
     }
     else
     {
 		// top down
-		*ppbuffer	= sww_state.pDIBBase;
+		*ppbuffer	= state->pDIBBase;
 		*ppitch		= vid.width;
     }
 
 	/*
 	** clear the DIB memory buffer
 	*/
-	memset( sww_state.pDIBBase, 0xff, vid.width * vid.height );
+	memset( state->pDIBBase, 0xff, vid.width * vid.height );
 
-	if ( ( sww_state.hdcDIBSection = CreateCompatibleDC( sww_state.hDC ) ) == NULL )
+	if ( ( state->hdcDIBSection = CreateCompatibleDC( state->hDC ) ) == NULL )
 	{
 		ri.Con_Printf( PRINT_ALL, "DIB_Init() - CreateCompatibleDC failed\n" );
 		goto fail;
 	}
-	if ( ( previously_selected_GDI_obj = SelectObject( sww_state.hdcDIBSection, sww_state.hDIBSection ) ) == NULL )
+	if ( ( previously_selected_GDI_obj = SelectObject( state->hdcDIBSection, state->hDIBSection ) ) == NULL )
 	{
 		ri.Con_Printf( PRINT_ALL, "DIB_Init() - SelectObject failed\n" );
 		goto fail;
@@ -194,7 +265,7 @@ qboolean DIB_Init( unsigned char **ppbuffer, int *ppitch )
 	return true;
 
 fail:
-	DIB_Shutdown();
+	DIB_Shutdown( state );
 	return false;
 	
 }
@@ -212,7 +283,7 @@ fail:
 ** B = offset 2
 ** A = offset 3
 */
-void DIB_SetPalette( const unsigned char *_pal )
+void DIB_SetPalette( const unsigned char *_pal, swwstate_t* state )
 {
 	const unsigned char *pal = _pal;
   	LOGPALETTE		*pLogPal = ( LOGPALETTE * ) &s_ipal;
@@ -224,7 +295,7 @@ void DIB_SetPalette( const unsigned char *_pal )
 	/*
 	** set the DIB color table
 	*/
-	if ( sww_state.hdcDIBSection )
+	if ( state->hdcDIBSection )
 	{
 		for ( i = 0; i < 256; i++, pal += 4 )
 		{
@@ -242,7 +313,7 @@ void DIB_SetPalette( const unsigned char *_pal )
 		colors[255].rgbGreen = 0xff;
 		colors[255].rgbBlue = 0xff;
 
-		if ( SetDIBColorTable( sww_state.hdcDIBSection, 0, 256, colors ) == 0 )
+		if ( SetDIBColorTable( state->hdcDIBSection, 0, 256, colors ) == 0 )
 		{
 			ri.Con_Printf( PRINT_ALL, "DIB_SetPalette() - SetDIBColorTable failed\n" );
 		}
@@ -265,9 +336,9 @@ void DIB_SetPalette( const unsigned char *_pal )
 		/*
 		** destroy our old palette
 		*/
-		if ( sww_state.hPal )
+		if ( state->hPal )
 		{
-			DeleteObject( sww_state.hPal );
+			DeleteObject( state->hPal );
 			sww_state.hPal = 0;
 		}
 
@@ -294,18 +365,18 @@ void DIB_SetPalette( const unsigned char *_pal )
 		pLogPal->palPalEntry[255].peBlue	= 0xff;
 		pLogPal->palPalEntry[255].peFlags	= 0;
 
-		if ( ( sww_state.hPal = CreatePalette( pLogPal ) ) == NULL )
+		if ( ( state->hPal = CreatePalette( pLogPal ) ) == NULL )
 		{
 			ri.Sys_Error( ERR_FATAL, "DIB_SetPalette() - CreatePalette failed(%x)\n", GetLastError() );
 		}
 
-		if ( ( hpalOld = SelectPalette( hDC, sww_state.hPal, FALSE ) ) == NULL )
+		if ( ( hpalOld = SelectPalette( hDC, state->hPal, FALSE ) ) == NULL )
 		{
 			ri.Sys_Error( ERR_FATAL, "DIB_SetPalette() - SelectPalette failed(%x)\n",GetLastError() );
 		}
 
-		if ( sww_state.hpalOld == NULL )
-			sww_state.hpalOld = hpalOld;
+		if ( state->hpalOld == NULL )
+			state->hpalOld = hpalOld;
 
 		if ( ( ret = RealizePalette( hDC ) ) != pLogPal->palNumEntries ) 
 		{
@@ -317,42 +388,42 @@ void DIB_SetPalette( const unsigned char *_pal )
 /*
 ** DIB_Shutdown
 */
-void DIB_Shutdown( void )
+void DIB_Shutdown( swwstate_t* state  )
 {
-	if ( sww_state.palettized && s_systemcolors_saved )
-		DIB_RestoreSystemColors();
+	if ( state->palettized && s_systemcolors_saved )
+		DIB_RestoreSystemColors( &sww_state );
 
-	if ( sww_state.hPal )
+	if ( state->hPal )
 	{
 		DeleteObject( sww_state.hPal );
 		sww_state.hPal = 0;
 	}
 
-	if ( sww_state.hpalOld )
+	if ( state->hpalOld )
 	{
-		SelectPalette( sww_state.hDC, sww_state.hpalOld, FALSE );
-		RealizePalette( sww_state.hDC );
+		SelectPalette( state->hDC, state->hpalOld, FALSE );
+		RealizePalette( state->hDC );
 		sww_state.hpalOld = NULL;
 	}
 
-	if ( sww_state.hdcDIBSection )
+	if ( state->hdcDIBSection )
 	{
-		SelectObject( sww_state.hdcDIBSection, previously_selected_GDI_obj );
-		DeleteDC( sww_state.hdcDIBSection );
+		SelectObject( state->hdcDIBSection, previously_selected_GDI_obj );
+		DeleteDC( state->hdcDIBSection );
 		sww_state.hdcDIBSection = NULL;
 	}
 
-	if ( sww_state.hDIBSection )
+	if ( state->hDIBSection )
 	{
-		DeleteObject( sww_state.hDIBSection );
-		sww_state.hDIBSection = NULL;
-		sww_state.pDIBBase = NULL;
+		DeleteObject( state->hDIBSection );
+		state->hDIBSection = NULL;
+		state->pDIBBase = NULL;
 	}
 
-	if ( sww_state.hDC )
+	if ( state->hDC )
 	{
-		ReleaseDC( sww_state.hWnd, sww_state.hDC );
-		sww_state.hDC = 0;
+		ReleaseDC( state->hWnd, state->hDC );
+		state->hDC = 0;
 	}
 }
 
@@ -360,13 +431,13 @@ void DIB_Shutdown( void )
 /*
 ** DIB_Save/RestoreSystemColors
 */
-static void DIB_RestoreSystemColors( void )
+static void DIB_RestoreSystemColors(  swwstate_t* state )
 {
-    SetSystemPaletteUse( sww_state.hDC, SYSPAL_STATIC );
+    SetSystemPaletteUse( state->hDC, SYSPAL_STATIC );
     SetSysColors( NUM_SYS_COLORS, s_syspalindices, s_oldsyscolors );
 }
 
-static void DIB_SaveSystemColors( void )
+static void DIB_SaveSystemColors( swwstate_t* state  )
 {
 	int i;
 
