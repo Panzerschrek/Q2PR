@@ -5,21 +5,12 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ref_soft_panzer", "ref_soft
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		Debug Alpha|Win32 = Debug Alpha|Win32
-		Debug_Heretic_II|Win32 = Debug_Heretic_II|Win32
 		Debug|Win32 = Debug|Win32
-		Release Alpha|Win32 = Release Alpha|Win32
 		Release|Win32 = Release|Win32
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{FB61C84B-BCA0-418C-844B-2661FD25E0DB}.Debug Alpha|Win32.ActiveCfg = Debug Alpha|Win32
-		{FB61C84B-BCA0-418C-844B-2661FD25E0DB}.Debug Alpha|Win32.Build.0 = Debug Alpha|Win32
-		{FB61C84B-BCA0-418C-844B-2661FD25E0DB}.Debug_Heretic_II|Win32.ActiveCfg = Debug_Heretic_II|Win32
-		{FB61C84B-BCA0-418C-844B-2661FD25E0DB}.Debug_Heretic_II|Win32.Build.0 = Debug_Heretic_II|Win32
 		{FB61C84B-BCA0-418C-844B-2661FD25E0DB}.Debug|Win32.ActiveCfg = Debug|Win32
 		{FB61C84B-BCA0-418C-844B-2661FD25E0DB}.Debug|Win32.Build.0 = Debug|Win32
-		{FB61C84B-BCA0-418C-844B-2661FD25E0DB}.Release Alpha|Win32.ActiveCfg = Release Alpha|Win32
-		{FB61C84B-BCA0-418C-844B-2661FD25E0DB}.Release Alpha|Win32.Build.0 = Release Alpha|Win32
 		{FB61C84B-BCA0-418C-844B-2661FD25E0DB}.Release|Win32.ActiveCfg = Release|Win32
 		{FB61C84B-BCA0-418C-844B-2661FD25E0DB}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
